@@ -276,7 +276,7 @@ function App() {
             // Останавливаем упражнение
             setIsCountingDown(false);
             isCountingDownRef.current = false;
-            setCountdown(3);
+            setCountdown(5);
             setWebcamRunning(false);
 
             // Сбрасываем выбор руки для следующего упражнения
@@ -287,7 +287,7 @@ function App() {
     const startCountdown = () => {
         setIsCountingDown(true);
         isCountingDownRef.current = true;
-        setCountdown(3); // Устанавливаем значение 3 секунды
+        setCountdown(5); // Устанавливаем значение 5 секунды
 
         timerIdRef.current = setInterval(() => {
             setCountdown((prevCountdown) => {
