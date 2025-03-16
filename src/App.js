@@ -107,7 +107,7 @@ function App() {
     const lastVideoTimeRef = useRef(-1);
     let handUp = false;
 
-    const movementPhaseRef = useRef("initial"); // Фазы движения: 'initial', 'подъём', 'опускание'
+    const movementPhaseRef = useRef("initial");
     let movementPhases = [];
     let cycleTimes = [];
     let angularVelocities = [];
@@ -129,7 +129,8 @@ function App() {
         const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm");
         const poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
             baseOptions: {
-                modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
+                modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task",
+                // modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
                 delegate: "GPU",
             },
             runningMode: "VIDEO",
@@ -139,10 +140,10 @@ function App() {
 
         // Устанавливаем размеры видео и канваса
         if (videoRef.current && canvasRef.current) {
-            videoRef.current.width = 640;
-            videoRef.current.height = 480;
-            canvasRef.current.width = 640;
-            canvasRef.current.height = 480;
+            videoRef.current.width = 1280;
+            videoRef.current.height = 960;
+            canvasRef.current.width = 1280;
+            canvasRef.current.height = 960;
             canvasCtxRef.current = canvasRef.current.getContext("2d");
             drawingUtilsRef.current = new DrawingUtils(canvasCtxRef.current);
 
@@ -399,11 +400,6 @@ function App() {
             return;
         }
 
-        if (isCountingDownRef.current) {
-            window.requestAnimationFrame(predictWebcam);
-            return;
-        }
-
         const canvasElement = canvasRef.current;
         const video = videoRef.current;
         const poseLandmarker = poseLandmarkerRef.current;
@@ -414,11 +410,6 @@ function App() {
             console.error("One or more required elements are not available.");
             return;
         }
-
-        canvasElement.style.height = "480px";
-        video.style.height = "480px";
-        canvasElement.style.width = "640px";
-        video.style.width = "640px";
 
         let startTimeMs = performance.now();
         if (lastVideoTimeRef.current !== video.currentTime) {
@@ -432,7 +423,6 @@ function App() {
                     const exerciseData = exercises[selectedExercise];
 
                     let targetConnections, targetIndices;
-                    console.log("Current Hand Phase:", currentHandPhaseRef.current);
 
                     if (currentHandPhaseRef.current === "left" || currentHandPhaseRef.current === "right") {
                         // Анализируем одну руку
@@ -1017,8 +1007,6 @@ function App() {
             }
 
             // === Расчёт фаз для левой руки ===
-
-            // Находим максимальный угол для левой руки
             const maxAngleLeft = Math.max(...anglesLeft.map((a) => a.shoulderAngle));
             const loweringThresholdLeft = maxAngleLeft;
 
@@ -1047,7 +1035,6 @@ function App() {
             const downPhaseDurationLeft = downPhaseEndTimeLeft - downPhaseStartTimeLeft;
             const totalDurationLeft = upPhaseDurationLeft + downPhaseDurationLeft;
 
-            // Рассчитываем проценты
             const upPhasePercentageLeft = (upPhaseDurationLeft / totalDurationLeft) * 100;
             const downPhasePercentageLeft = (downPhaseDurationLeft / totalDurationLeft) * 100;
 
@@ -1058,9 +1045,8 @@ function App() {
             });
 
             // === Расчёт фаз для правой руки ===
-
             const maxAngleRight = Math.max(...anglesRight.map((a) => a.shoulderAngle));
-            const loweringThresholdRight = maxAngleRight;
+            const loweringThresholdRight = maxAngleRight; // Используем 90% от максимального угла как порог
 
             let upPhaseStartTimeRight = anglesRight[0].time;
             let upPhaseEndTimeRight = null;
@@ -1087,7 +1073,6 @@ function App() {
             const downPhaseDurationRight = downPhaseEndTimeRight - downPhaseStartTimeRight;
             const totalDurationRight = upPhaseDurationRight + downPhaseDurationRight;
 
-            // Рассчитываем проценты
             const upPhasePercentageRight = (upPhaseDurationRight / totalDurationRight) * 100;
             const downPhasePercentageRight = (downPhaseDurationRight / totalDurationRight) * 100;
 
@@ -1174,23 +1159,23 @@ function App() {
             bothHands: bothHandsData.current,
         };
 
-        // Преобразуем объект в JSON-строку
-        const jsonString = JSON.stringify(results, null, 2);
+        // // Преобразуем объект в JSON-строку
+        // const jsonString = JSON.stringify(results, null, 2);
 
-        // Создаем Blob из JSON-строки
-        const blob = new Blob([jsonString], { type: "application/json" });
+        // // Создаем Blob из JSON-строки
+        // const blob = new Blob([jsonString], { type: "application/json" });
 
-        // Создаем ссылку для скачивания
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "exercise_results.json"; // Имя файла
-        document.body.appendChild(a);
-        a.click();
+        // // Создаем ссылку для скачивания
+        // const url = URL.createObjectURL(blob);
+        // const a = document.createElement("a");
+        // a.href = url;
+        // a.download = "exercise_results.json"; // Имя файла
+        // document.body.appendChild(a);
+        // a.click();
 
-        // Убираем ссылку из DOM
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        // // Убираем ссылку из DOM
+        // document.body.removeChild(a);
+        // URL.revokeObjectURL(url);
 
         // Функция для отображения графиков и анализа данных после завершения упражнения
         console.log("Упражнение завершено. Анализ данных:");
@@ -1207,7 +1192,6 @@ function App() {
         console.log("Количество повторений:", bothHandsData.current.counter);
         console.log("Данные повторений:", bothHandsData.current.repetitions);
     }
-
     return (
         <div className="App">
             <div
@@ -1298,9 +1282,9 @@ function App() {
                 <div id="fpsCounter" style={{ fontSize: "26px" }}>
                     FPS:{" "}
                 </div>
-                <div style={{ width: "640px", height: "480px", position: "relative" }}>
-                    <video ref={videoRef} id="webcam" style={{ position: "absolute", top: "0", left: "0" }} autoPlay playsInline />
-                    <canvas ref={canvasRef} className="output_canvas" id="output_canvas" style={{ position: "absolute", top: "0", left: "0" }} />
+                <div style={{ width: "1280px", height: "960px", position: "relative" }}>
+                    <video ref={videoRef} id="webcam" style={{ position: "absolute", top: "0", left: "0", transform: "scaleX(-1)" }} autoPlay playsInline />
+                    <canvas ref={canvasRef} className="output_canvas" id="output_canvas" style={{ position: "absolute", top: "0", left: "0", transform: "scaleX(-1)" }} />
                 </div>
                 {isCountingDown && (
                     <div id="countdownTimer" style={{ fontSize: "30px", color: "red" }}>
