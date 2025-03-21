@@ -29,6 +29,9 @@ function App() {
     const [leftPhasesData, setLeftPhasesData] = useState([]);
     const [rightPhasesData, setRightPhasesData] = useState([]);
     const [bothPhasesData, setBothPhasesData] = useState([]);
+    const [leftHandStats, setLeftHandStats] = useState([]);
+    const [rightHandStats, setRightHandStats] = useState([]);
+    const [bothHandsStats, setBothHandsStats] = useState([]);
 
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
@@ -915,25 +918,6 @@ function App() {
         }
     }
 
-    // если угл отрицательный, то левое плечо выше правого и наоборот
-    function calcTorsoTilt(leftShoulder, rightShoulder) {
-        const deltaY = leftShoulder.y - rightShoulder.y;
-        const deltaX = leftShoulder.x - rightShoulder.x;
-        const radians = Math.atan2(deltaY, deltaX);
-        let angle = radians * (180.0 / Math.PI); // Преобразуем в градусы
-        return angle; // Угол относительно горизонтали
-    }
-
-    function calcShoulderElevationAngle(leftShoulder, rightShoulder) {
-        const deltaX = leftShoulder.x - rightShoulder.x;
-        const deltaY = leftShoulder.y - rightShoulder.y;
-
-        const radians = Math.atan2(deltaX, deltaY); // Здесь мы меняем порядок deltaX и deltaY
-        let angle = radians * (180.0 / Math.PI); // Преобразуем в градусы
-
-        return angle; // Угол относительно оси Y
-    }
-
     function calcForearmLength(shoulder, elbow) {
         const deltaX = shoulder.x - elbow.x;
         const deltaY = shoulder.y - elbow.y;
@@ -1151,14 +1135,71 @@ function App() {
         setRightPhasesData(tempRightPhasesData);
         setBothPhasesData({ left: tempBothPhasesDataLeft, right: tempBothPhasesDataRight });
 
-        setShowCharts(true);
-        // Собираем все данные в один объект
         const results = {
             leftHand: leftHandData.current,
             rightHand: rightHandData.current,
             bothHands: bothHandsData.current,
         };
 
+        const leftStats = leftHandData.current.repetitions.map((rep, index) => {
+            const angularVelocities = rep.angularVelocities.map((av) => av.angularVelocity);
+            const min = Math.min(...angularVelocities);
+            const max = Math.max(...angularVelocities);
+            const avg = angularVelocities.reduce((sum, val) => sum + val, 0) / angularVelocities.length;
+
+            return {
+                repetition: index + 1,
+                min,
+                max,
+                avg,
+            };
+        });
+        setLeftHandStats(leftStats);
+
+        const rightStats = rightHandData.current.repetitions.map((rep, index) => {
+            const angularVelocities = rep.angularVelocities.map((av) => av.angularVelocity);
+            const min = Math.min(...angularVelocities);
+            const max = Math.max(...angularVelocities);
+            const avg = angularVelocities.reduce((sum, val) => sum + val, 0) / angularVelocities.length;
+
+            return {
+                repetition: index + 1,
+                min,
+                max,
+                avg,
+            };
+        });
+        setRightHandStats(rightStats);
+
+        const bothStats = bothHandsData.current.repetitions.map((rep, index) => {
+            const angularVelocitiesLeft = rep.angularVelocitiesLeft.map((av) => av.angularVelocity);
+            const angularVelocitiesRight = rep.angularVelocitiesRight.map((av) => av.angularVelocity);
+
+            const minLeft = Math.min(...angularVelocitiesLeft);
+            const maxLeft = Math.max(...angularVelocitiesLeft);
+            const avgLeft = angularVelocitiesLeft.reduce((sum, val) => sum + val, 0) / angularVelocitiesLeft.length;
+
+            const minRight = Math.min(...angularVelocitiesRight);
+            const maxRight = Math.max(...angularVelocitiesRight);
+            const avgRight = angularVelocitiesRight.reduce((sum, val) => sum + val, 0) / angularVelocitiesRight.length;
+
+            return {
+                repetition: index + 1,
+                left: {
+                    min: minLeft,
+                    max: maxLeft,
+                    avg: avgLeft,
+                },
+                right: {
+                    min: minRight,
+                    max: maxRight,
+                    avg: avgRight,
+                },
+            };
+        });
+        setBothHandsStats(bothStats);
+
+        setShowCharts(true);
         // // Преобразуем объект в JSON-строку
         // const jsonString = JSON.stringify(results, null, 2);
 
@@ -1319,6 +1360,42 @@ function App() {
                     <MovementPhaseChart phasesDataLeft={[]} phasesDataRight={rightPhasesData} handLabel="Правая рука" />
                     {/* Отображаем график для обеих рук, используя данные фаз из exercises с обеими руками */}
                     <MovementPhaseChart phasesDataLeft={bothPhasesData.left} phasesDataRight={bothPhasesData.right} handLabel="Обе руки" />
+
+                    <h2>Статистика угловой скорости</h2>
+                    <h3>Левая рука</h3>
+                    <ul style={{ listStyleType: "none", paddingLeft: "0" }}>
+                        {leftHandStats.map((stat, index) => (
+                            <li key={index}>
+                                Повторение {stat.repetition}: Min = {stat.min.toFixed(2)}°/s, Max = {stat.max.toFixed(2)}°/s, Avg = {stat.avg.toFixed(2)}°/s
+                            </li>
+                        ))}
+                    </ul>
+
+                    <h3>Правая рука</h3>
+                    <ul style={{ listStyleType: "none", paddingLeft: "0" }}>
+                        {rightHandStats.map((stat, index) => (
+                            <li key={index}>
+                                Повторение {stat.repetition}: Min = {stat.min.toFixed(2)}°/s, Max = {stat.max.toFixed(2)}°/s, Avg = {stat.avg.toFixed(2)}°/s
+                            </li>
+                        ))}
+                    </ul>
+
+                    <h3>Обе руки</h3>
+                    <ul style={{ listStyleType: "none", paddingLeft: "0" }}>
+                        {bothHandsStats.map((stat, index) => (
+                            <li key={index}>
+                                Повторение {stat.repetition}:
+                                <ul style={{ listStyleType: "none", paddingLeft: "20px" }}>
+                                    <li>
+                                        Левая рука: Min = {stat.left.min.toFixed(2)}°/s, Max = {stat.left.max.toFixed(2)}°/s, Avg = {stat.left.avg.toFixed(2)}°/s
+                                    </li>
+                                    <li>
+                                        Правая рука: Min = {stat.right.min.toFixed(2)}°/s, Max = {stat.right.max.toFixed(2)}°/s, Avg = {stat.right.avg.toFixed(2)}°/s
+                                    </li>
+                                </ul>
+                            </li>
+                        ))}
+                    </ul>
                 </div>
             )}
         </div>
