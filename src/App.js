@@ -669,7 +669,7 @@ function App() {
         handData.lastTime = currentTime;
 
         // Логика фаз движения
-        const angleThresholdUp = 30;
+        const angleThresholdUp = 20;
         const angleThresholdDown = 20;
 
         if (movementPhaseRef.current === "initial" && shoulderAngleLeft > angleThresholdUp && shoulderAngleRight > angleThresholdUp) {
@@ -841,7 +841,7 @@ function App() {
         handData.lastTime = currentTime;
 
         // Логика фаз движения
-        const angleThresholdUp = 30;
+        const angleThresholdUp = 20;
         const angleThresholdDown = 20;
 
         if (movementPhaseRef.current === "initial" && shoulderAngle > angleThresholdUp) {
@@ -1146,54 +1146,90 @@ function App() {
             const min = Math.min(...angularVelocities);
             const max = Math.max(...angularVelocities);
             const avg = angularVelocities.reduce((sum, val) => sum + val, 0) / angularVelocities.length;
-
+        
+            // Фильтруем положительные (подъем) и отрицательные (опускание) значения
+            const positiveVelocities = angularVelocities.filter((v) => v > 0); // Подъем
+            const negativeVelocities = angularVelocities.filter((v) => v < 0); // Опускание
+        
+            // Средние значения для подъема и опускания
+            const avgUp = positiveVelocities.length > 0 ? positiveVelocities.reduce((sum, val) => sum + val, 0) / positiveVelocities.length : 0;
+            const avgDown = negativeVelocities.length > 0 ? negativeVelocities.reduce((sum, val) => sum + val, 0) / negativeVelocities.length : 0;
+        
             return {
                 repetition: index + 1,
                 min,
                 max,
-                avg,
+                avgDown, 
+                avgUp, 
             };
         });
         setLeftHandStats(leftStats);
-
+        
         const rightStats = rightHandData.current.repetitions.map((rep, index) => {
             const angularVelocities = rep.angularVelocities.map((av) => av.angularVelocity);
             const min = Math.min(...angularVelocities);
             const max = Math.max(...angularVelocities);
             const avg = angularVelocities.reduce((sum, val) => sum + val, 0) / angularVelocities.length;
-
+        
+            // Фильтруем положительные (подъем) и отрицательные (опускание) значения
+            const positiveVelocities = angularVelocities.filter((v) => v > 0); // Подъем
+            const negativeVelocities = angularVelocities.filter((v) => v < 0); // Опускание
+        
+            // Средние значения для подъема и опускания
+            const avgUp = positiveVelocities.length > 0 ? positiveVelocities.reduce((sum, val) => sum + val, 0) / positiveVelocities.length : 0;
+            const avgDown = negativeVelocities.length > 0 ? negativeVelocities.reduce((sum, val) => sum + val, 0) / negativeVelocities.length : 0;
+        
             return {
                 repetition: index + 1,
                 min,
                 max,
-                avg,
+                avgDown, 
+                avgUp, 
             };
         });
         setRightHandStats(rightStats);
-
+        
         const bothStats = bothHandsData.current.repetitions.map((rep, index) => {
             const angularVelocitiesLeft = rep.angularVelocitiesLeft.map((av) => av.angularVelocity);
             const angularVelocitiesRight = rep.angularVelocitiesRight.map((av) => av.angularVelocity);
-
+        
             const minLeft = Math.min(...angularVelocitiesLeft);
             const maxLeft = Math.max(...angularVelocitiesLeft);
             const avgLeft = angularVelocitiesLeft.reduce((sum, val) => sum + val, 0) / angularVelocitiesLeft.length;
-
+        
             const minRight = Math.min(...angularVelocitiesRight);
             const maxRight = Math.max(...angularVelocitiesRight);
             const avgRight = angularVelocitiesRight.reduce((sum, val) => sum + val, 0) / angularVelocitiesRight.length;
-
+        
+            // Фильтруем положительные (подъем) и отрицательные (опускание) значения для левой руки
+            const positiveVelocitiesLeft = angularVelocitiesLeft.filter((v) => v > 0); // Подъем
+            const negativeVelocitiesLeft = angularVelocitiesLeft.filter((v) => v < 0); // Опускание
+        
+            // Средние значения для подъема и опускания (левая рука)
+            const avgUpLeft = positiveVelocitiesLeft.length > 0 ? positiveVelocitiesLeft.reduce((sum, val) => sum + val, 0) / positiveVelocitiesLeft.length : 0;
+            const avgDownLeft = negativeVelocitiesLeft.length > 0 ? negativeVelocitiesLeft.reduce((sum, val) => sum + val, 0) / negativeVelocitiesLeft.length : 0;
+        
+            // Фильтруем положительные (подъем) и отрицательные (опускание) значения для правой руки
+            const positiveVelocitiesRight = angularVelocitiesRight.filter((v) => v > 0); // Подъем
+            const negativeVelocitiesRight = angularVelocitiesRight.filter((v) => v < 0); // Опускание
+        
+            // Средние значения для подъема и опускания (правая рука)
+            const avgUpRight = positiveVelocitiesRight.length > 0 ? positiveVelocitiesRight.reduce((sum, val) => sum + val, 0) / positiveVelocitiesRight.length : 0;
+            const avgDownRight = negativeVelocitiesRight.length > 0 ? negativeVelocitiesRight.reduce((sum, val) => sum + val, 0) / negativeVelocitiesRight.length : 0;
+        
             return {
                 repetition: index + 1,
                 left: {
                     min: minLeft,
                     max: maxLeft,
-                    avg: avgLeft,
+                    avgDown: avgDownLeft, 
+                    avgUp: avgUpLeft,
                 },
                 right: {
                     min: minRight,
                     max: maxRight,
-                    avg: avgRight,
+                    avgDown: avgDownRight, 
+                    avgUp: avgUpRight, 
                 },
             };
         });
@@ -1366,7 +1402,9 @@ function App() {
                     <ul style={{ listStyleType: "none", paddingLeft: "0" }}>
                         {leftHandStats.map((stat, index) => (
                             <li key={index}>
-                                Повторение {stat.repetition}: Min = {stat.min.toFixed(2)}°/s, Max = {stat.max.toFixed(2)}°/s, Avg = {stat.avg.toFixed(2)}°/s
+                                Повторение {stat.repetition}: Min = {stat.min.toFixed(2)}°/s, Max = {stat.max.toFixed(2)}°/s
+                                <br />
+                                Опускание: Avg = {stat.avgDown.toFixed(2)}°/s, Подъем: Avg = {stat.avgUp.toFixed(2)}°/s
                             </li>
                         ))}
                     </ul>
@@ -1375,7 +1413,9 @@ function App() {
                     <ul style={{ listStyleType: "none", paddingLeft: "0" }}>
                         {rightHandStats.map((stat, index) => (
                             <li key={index}>
-                                Повторение {stat.repetition}: Min = {stat.min.toFixed(2)}°/s, Max = {stat.max.toFixed(2)}°/s, Avg = {stat.avg.toFixed(2)}°/s
+                                Повторение {stat.repetition}: Min = {stat.min.toFixed(2)}°/s, Max = {stat.max.toFixed(2)}°/s
+                                <br />
+                                Опускание: Avg = {stat.avgDown.toFixed(2)}°/s, Подъем: Avg = {stat.avgUp.toFixed(2)}°/s
                             </li>
                         ))}
                     </ul>
@@ -1387,10 +1427,14 @@ function App() {
                                 Повторение {stat.repetition}:
                                 <ul style={{ listStyleType: "none", paddingLeft: "20px" }}>
                                     <li>
-                                        Левая рука: Min = {stat.left.min.toFixed(2)}°/s, Max = {stat.left.max.toFixed(2)}°/s, Avg = {stat.left.avg.toFixed(2)}°/s
+                                        Левая рука: Min = {stat.left.min.toFixed(2)}°/s, Max = {stat.left.max.toFixed(2)}°/s
+                                        <br />
+                                        Опускание: Avg = {stat.left.avgDown.toFixed(2)}°/s, Подъем: Avg = {stat.left.avgUp.toFixed(2)}°/s
                                     </li>
                                     <li>
-                                        Правая рука: Min = {stat.right.min.toFixed(2)}°/s, Max = {stat.right.max.toFixed(2)}°/s, Avg = {stat.right.avg.toFixed(2)}°/s
+                                        Правая рука: Min = {stat.right.min.toFixed(2)}°/s, Max = {stat.right.max.toFixed(2)}°/s
+                                        <br />
+                                        Опускание: Avg = {stat.right.avgDown.toFixed(2)}°/s, Подъем: Avg = {stat.right.avgUp.toFixed(2)}°/s
                                     </li>
                                 </ul>
                             </li>
