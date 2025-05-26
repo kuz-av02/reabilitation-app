@@ -4,6 +4,9 @@ import React, { useRef, useState, useEffect } from "react";
 import GraphSingleHand from "./GraphSingleHand";
 import GraphBothHands from "./GraphBothHands";
 import MovementPhaseChart from "./MovementPhaseChart";
+import GraphSingleWrist from "./GraphSingleWrist";
+import MovementPhaseWrist from "./MovementPhaseWrist";
+// import { exportChartsToPDF } from "./exportToPDF";
 
 function App() {
     const [desiredReps, setDesiredReps] = useState(5);
@@ -32,6 +35,8 @@ function App() {
     const [leftHandStats, setLeftHandStats] = useState([]);
     const [rightHandStats, setRightHandStats] = useState([]);
     const [bothHandsStats, setBothHandsStats] = useState([]);
+    const [displayedExercise, setDisplayedExercise] = useState(null);
+    const [displayMessage, setDisplayMessage] = useState(currentHandPhaseRef.current === "both" ? "Поднимите обе руки вверх" : `Поднимите ${currentHand === "left" ? "левую" : "правую"} руку вверх`);
 
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
@@ -49,6 +54,9 @@ function App() {
         repetitions: [],
         lastLinearVelocity: 0,
         currentRepetition: null,
+        maxAngleWrist: 0,
+        minAngleWrist: 0,
+        wristAmplitude: 0,
         maxShoulderAngle: 0,
         minShoulderAngle: 180,
         shoulderAmplitude: 0,
@@ -69,6 +77,9 @@ function App() {
         repetitions: [],
         lastLinearVelocity: 0,
         currentRepetition: null,
+        maxAngleWrist: 0,
+        minAngleWrist: 0,
+        wristAmplitude: 0,
         maxShoulderAngle: 0,
         minShoulderAngle: 180,
         shoulderAmplitude: 0,
@@ -381,22 +392,86 @@ function App() {
             name: "Поднятие кисти",
             targetConnections: {
                 left: [
+                    { start: 13, end: 15 },
+                    { start: 15, end: 17 },
                     { start: 15, end: 19 },
-                    { start: 19, end: 21 },
                 ],
                 right: [
+                    { start: 14, end: 16 },
+                    { start: 16, end: 18 },
                     { start: 16, end: 20 },
-                    { start: 20, end: 22 },
                 ],
             },
             targetIndices: {
-                left: [15, 17, 19, 21],
-                right: [16, 18, 20, 22],
+                left: [13, 15, 17, 19],
+                right: [14, 16, 18, 20],
             },
             analyzeFunction: analyzeWristCurl,
         },
-        // Добавьте другие упражнения по аналогии
     };
+
+    const waitForUserInput = () => {
+        return new Promise((resolve) => {
+            const handleInteraction = () => {
+                document.removeEventListener("keydown", handleInteraction);
+                document.removeEventListener("click", handleInteraction);
+                resolve();
+            };
+
+            document.addEventListener("keydown", handleInteraction);
+            document.addEventListener("click", handleInteraction);
+        });
+    };
+
+    const handleArmSwitch = async () => {
+        console.log("Переход к другой руке");
+
+        // Блокируем дальнейший анализ
+        isCountingDownRef.current = true;
+
+        const opposite = oppositeHand(initialHandRef.current);
+        currentHandPhaseRef.current = opposite;
+        currentHandRef.current = opposite;
+        setCurrentHand(opposite);
+
+        // Показываем сообщение пользователю
+        setDisplayMessage("Нажмите любую клавишу или кнопку мыши для продолжения");
+
+        // Ждём ввода
+        await waitForUserInput();
+
+        // Разблокируем анализ
+        isCountingDownRef.current = false;
+
+        // Возвращаем стандартное сообщение
+        setDisplayMessage(`Поднимите ${opposite === "left" ? "левую" : "правую"} руку вверх`);
+
+        resetScenario();
+    };
+
+    const ArmRaiseCharts = () => (
+        <>
+            <h2>Результаты упражнения "Поднятие руки в сторону"</h2>
+            <GraphSingleHand repetitions={leftRepetitions} handLabel="Левая рука" lineColor="rgba(75, 192, 192, 1)" />
+            <GraphSingleHand repetitions={rightRepetitions} handLabel="Правая рука" lineColor="rgba(153, 102, 255, 1)" />
+            <GraphBothHands bothRepetitions={bothRepetitions} />
+            <h2>Графики фаз движения</h2>
+            <MovementPhaseChart phasesDataLeft={leftPhasesData} phasesDataRight={[]} handLabel="Левая рука" />
+            <MovementPhaseChart phasesDataLeft={[]} phasesDataRight={rightPhasesData} handLabel="Правая рука" />
+            <MovementPhaseChart phasesDataLeft={bothPhasesData.left} phasesDataRight={bothPhasesData.right} handLabel="Обе руки" />
+        </>
+    );
+
+    const WristCurlCharts = () => (
+        <>
+            <h2>Результаты упражнения "Поднятие кисти"</h2>
+            <GraphSingleWrist repetitions={leftRepetitions} handLabel="Левая кисть" lineColor="rgba(255, 99, 132, 1)" />
+            <GraphSingleWrist repetitions={rightRepetitions} handLabel="Правая кисть" lineColor="rgba(54, 162, 235, 1)" />
+            <h3>Фазы движения кисти</h3>
+            {/* <MovementPhaseWrist phasesDataLeft={leftPhasesData} phasesDataRight={[]} handLabel="Левая кисть" />
+            <MovementPhaseWrist phasesDataLeft={[]} phasesDataRight={rightPhasesData} handLabel="Правая кисть" /> */}
+        </>
+    );
 
     async function predictWebcam() {
         if (!webcamRunning) {
@@ -499,36 +574,208 @@ function App() {
         }
     }
 
+    function calculateAcceleration(currentVelocity, previousVelocity, deltaTime) {
+        return deltaTime > 0 ? (currentVelocity - previousVelocity) / deltaTime : 0;
+    }
+
     function analyzeWristCurl(landmark) {
+        if (isCountingDownRef.current) {
+            return;
+        }
+
         const currentTime = performance.now();
+        const timeInSeconds = currentTime / 1000;
         const handData = currentHandRef.current === "left" ? leftHandData.current : rightHandData.current;
 
-        let wrist, elbow, shoulder;
+        // Инициализация данных при первом вызове
+        if (!handData.startTime) handData.startTime = timeInSeconds;
+        handData.repetitions = handData.repetitions || [];
+        handData.currentRepetition = handData.currentRepetition || null;
+        // handData.lastTime = timeInSeconds;
+
+        // Получение ключевых точек
+        let wrist, elbow, fingerTip;
         if (currentHandRef.current === "left") {
             wrist = landmark[15];
             elbow = landmark[13];
-            shoulder = landmark[11];
+            fingerTip = landmark[17];
         } else {
             wrist = landmark[16];
             elbow = landmark[14];
-            shoulder = landmark[12];
+            fingerTip = landmark[18];
         }
 
-        const elbowAngle = calcAngle(wrist, elbow, shoulder);
-        handData.maxElbowAngle = Math.max(handData.maxElbowAngle, elbowAngle);
-        handData.minElbowAngle = Math.min(handData.minElbowAngle, elbowAngle);
-        handData.elbowAmplitude = handData.maxElbowAngle - handData.minElbowAngle;
+        // Расчет углов и параметров
+        const angleWrist = calcAngle(elbow, wrist, fingerTip);
+        const horizontalAngle = calcAngle(wrist, elbow, { x: 0, y: elbow.y });
+        const velocity = calculateAngularVelocity(angleWrist, handData.lastAngle || angleWrist, currentTime - (handData.lastTime || currentTime));
 
-        // Логика фаз движения
-        // ...
+        const deltaTime = timeInSeconds - (handData.currentRepetition?.startTime || timeInSeconds);
+        const acceleration = calculateAcceleration(velocity, handData.lastAngularVelocity || 0, deltaTime);
 
-        // Обновление интерфейса
-        document.getElementById("maxAngle").innerHTML = `Максимальный угол сгибания в локте: ${handData.maxElbowAngle.toFixed(2)}°`;
-        document.getElementById("movementAmplitude").innerHTML = `Амплитуда движения: ${handData.elbowAmplitude.toFixed(2)}°`;
-        document.getElementById("movementPhase").innerHTML = `Текущая фаза: ${movementPhaseRef.current}`;
+        const radius = calcForearmLength(fingerTip, wrist);
+        const linearVelocity = ((velocity * Math.PI) / 180) * radius;
 
-        // Проверка завершения упражнения
-        // ...
+        handData.maxAngleWrist = Math.max(handData.maxAngleWrist, angleWrist);
+        handData.minAngleWrist = Math.min(handData.minAngleWrist, angleWrist);
+        handData.wristAmplitude = handData.maxAngleWrist - handData.minAngleWrist;
+
+        // console.log("velocity: " + velocity);
+        // console.log("current: " + movementPhaseRef.current);
+        // console.log("angularVelocity: " + angularVelocity);
+        // console.log("angleWrist: " + angleWrist);
+        // console.log("horizontalAngle: " + horizontalAngle);
+
+        if (handData.currentRepetition) {
+            const relativeTime = timeInSeconds - handData.currentRepetition.startTime;
+            handData.currentRepetition.angles.push({ time: relativeTime, angleWrist: angleWrist, horizontalAngle: horizontalAngle, maxAngleWrist: handData.maxAngleWrist });
+            handData.currentRepetition.angularVelocities.push({ time: timeInSeconds, angularVelocity: velocity });
+            handData.currentRepetition.linearVelocities.push({ time: timeInSeconds, linearVelocity: linearVelocity });
+            handData.currentRepetition.accelerations.push({ time: timeInSeconds, acceleration: acceleration });
+        }
+
+        if (movementPhaseRef.current === "initial" && wrist.y - fingerTip.y > 0.017) {
+            // console.log("velocity: " + velocity);
+            // console.log("angleWrist: " + angleWrist);
+            movementPhaseRef.current = "up";
+
+            handData.currentRepetition = {
+                type: "up",
+                startTime: timeInSeconds,
+                angles: [],
+                velocities: [],
+                angularVelocities: [],
+                linearVelocities: [],
+                accelerations: [],
+                horizontalAngles: [],
+                averageAcceleration: 0,
+                endTime: null,
+                upDuration: 0,
+                downDuration: 0,
+                duration: 0,
+                counter: 0,
+            };
+
+            // const relativeTime = timeInSeconds - handData.currentRepetition.startTime;
+            // handData.currentRepetition.angles.push({ time: relativeTime, angleWrist: angleWrist, horizontalAngle: horizontalAngle, maxAngleWrist: handData.maxShoulderAngle });
+            // handData.currentRepetition.angularVelocities.push({ time: timeInSeconds, angularVelocity: velocity });
+            // handData.currentRepetition.linearVelocities.push({ time: timeInSeconds, linearVelocity: linearVelocity });
+            // handData.currentRepetition.accelerations.push({ time: timeInSeconds, acceleration: acceleration });
+        } else if (movementPhaseRef.current === "up" && wrist.y - fingerTip.y < 0.015) {
+            movementPhaseRef.current = "down";
+
+            if (handData.currentRepetition) {
+                handData.currentRepetition.endTime = timeInSeconds;
+                handData.currentRepetition.duration = handData.currentRepetition.endTime - handData.currentRepetition.startTime;
+
+                // Вычисляем среднее ускорение
+                const accelerations = handData.currentRepetition.accelerations.map((a) => a.acceleration);
+                const sumAcceleration = accelerations.reduce((acc, val) => acc + val, 0);
+                const averageAcceleration = sumAcceleration / accelerations.length || 0;
+                handData.currentRepetition.averageAcceleration = averageAcceleration;
+
+                handData.repetitions.push(handData.currentRepetition);
+                handData.currentRepetition = null;
+
+                handData.counter += 1;
+                document.getElementById("counter").innerHTML = `Количество повторений: ${handData.counter}`;
+
+                if (handData.counter >= desiredRepsRef.current) {
+                    // console.log("Переход к другой руке");
+                    if (currentHandPhaseRef.current === initialHandRef.current) {
+                        // Переходим к противоположной руке
+                        handleArmSwitch();
+                        // startCountdown();
+                    } else if (currentHandPhaseRef.current === oppositeHand(initialHandRef.current)) {
+                        currentHandPhaseRef.current = "finished";
+                        setWebcamRunning(false);
+                        displayResults();
+                        // startCountdown();
+                    }
+                }
+            }
+
+            movementPhaseRef.current = "initial";
+        }
+
+        // Обновление предыдущих значений
+        handData.lastTime = currentTime;
+        handData.lastAngle = angleWrist;
+
+        // // Обновление данных текущего повторения
+        // const currentRep = handData.currentRepetition;
+
+        // // Расчет угловой скорости
+        // const angularVelocity = currentRep.angles.length > 0 ? (angleWrist - currentRep.angles[currentRep.angles.length - 1].angleWrist) / deltaTime : 0;
+
+        // // Расчет линейной скорости
+        // const forearmLength = calcForearmLength(elbow, wrist);
+        // const linearVelocity = angularVelocity * (Math.PI / 180) * forearmLength;
+
+        // // Расчет ускорения
+        // const acceleration = currentRep.angularVelocities.length > 0 ? (angularVelocity - currentRep.angularVelocities[currentRep.angularVelocities.length - 1].angularVelocity) / deltaTime : 0;
+
+        // // Запись данных в текущее повторение
+        // currentRep.angles.push({
+        //     time: timeInSeconds,
+        //     angleWrist: angleWrist,
+        //     maxWristAngle: Math.max(currentRep.maxWristAngle, angleWrist),
+        // });
+
+        // currentRep.angularVelocities.push({
+        //     time: timeInSeconds,
+        //     angularVelocity: angularVelocity,
+        // });
+
+        // currentRep.linearVelocities.push({
+        //     time: timeInSeconds,
+        //     linearVelocity: linearVelocity,
+        // });
+
+        // currentRep.accelerations.push({
+        //     time: timeInSeconds,
+        //     acceleration: acceleration,
+        // });
+
+        // // Логика определения завершения повторения
+        // const angleThreshold = 30; // Пороговый угол для определения движения
+        // if (angleWrist > angleThreshold && !currentRep.current) {
+        //     currentRep.current = true;
+        // } else if (angleWrist < angleThreshold && currentRep.current) {
+        //     currentRep.current = false;
+        //     currentRep.endTime = timeInSeconds;
+        //     currentRep.duration = currentRep.endTime - currentRep.startTime;
+
+        //     // Расчет среднего ускорения
+        //     currentRep.averageAcceleration = currentRep.accelerations.reduce((sum, a) => sum + a.acceleration, 0) / currentRep.accelerations.length;
+
+        //     // Сохранение повторения
+        //     handData.repetitions.push(currentRep);
+        //     handData.counter++;
+
+        //     // Сброс текущего повторения
+        //     handData.currentRepetition = null;
+
+        //     if (handData.counter >= desiredRepsRef.current) {
+        //         // Упражнение завершено
+        //         currentRep.current = "finished";
+        //         setWebcamRunning(false);
+        //         displayResults();
+        //     }
+        // }
+
+        // // Обновление интерфейса
+        // document.getElementById("maxAngle").innerHTML = `Максимальный угол сгибания кисти: ${handData.maxWristAngle}°`;
+        // document.getElementById("movementAmplitude").innerHTML = `Амплитуда движения: ${handData.wristAmplitude}°`;
+        // document.getElementById("movementPhase").innerHTML = `Текущая фаза: ${movementPhaseRef.current}`;
+    }
+
+    function applyLowPassFilter(newValue, oldValue, factor = 0.3) {
+        return oldValue ? oldValue * (1 - factor) + newValue * factor : newValue;
+    }
+
+    function calculateAngularVelocity(currentAngle, prevAngle, deltaTime) {
+        return deltaTime > 0 ? (currentAngle - prevAngle) / (deltaTime / 1000) : 0;
     }
 
     function analyzeBothArms(handData, landmark, currentTime, timeInSeconds) {
@@ -731,6 +978,10 @@ function App() {
     }
 
     function analyzeSingleArm(handData, landmark, hand, currentTime, timeInSeconds) {
+        if (isCountingDownRef.current) {
+            return;
+        }
+
         let shoulder, elbow, wrist, hip;
         if (hand === "left") {
             shoulder = landmark[11];
@@ -921,7 +1172,7 @@ function App() {
     function calcForearmLength(shoulder, elbow) {
         const deltaX = shoulder.x - elbow.x;
         const deltaY = shoulder.y - elbow.y;
-        const deltaZ = (shoulder.z || 0) - (elbow.z || 0); // Проверяем на undefined
+        const deltaZ = (shoulder.z || 0) - (elbow.z || 0);
 
         return Math.sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
     }
@@ -949,6 +1200,58 @@ function App() {
 
                     // Ищем момент перехода из фазы подъёма в фазу опускания
                     if (angle >= loweringThreshold && !upPhaseEndTime) {
+                        upPhaseEndTime = angleData.time;
+                        downPhaseStartTime = angleData.time;
+                        break;
+                    }
+                }
+
+                // Если фаза опускания не была найдена, устанавливаем конец фазы подъёма в конец повторения
+                if (!upPhaseEndTime) {
+                    upPhaseEndTime = angles[angles.length - 1].time;
+                    downPhaseStartTime = upPhaseEndTime;
+                }
+
+                const upPhaseDuration = upPhaseEndTime - upPhaseStartTime;
+                const downPhaseDuration = downPhaseEndTime - downPhaseStartTime;
+                const totalDuration = upPhaseDuration + downPhaseDuration;
+
+                // Рассчитываем проценты
+                const upPhasePercentage = (upPhaseDuration / totalDuration) * 100;
+                const downPhasePercentage = (downPhaseDuration / totalDuration) * 100;
+
+                return {
+                    repetition: index + 1,
+                    upPhasePercentage,
+                    downPhasePercentage,
+                };
+            })
+            .filter((rep) => rep !== null);
+    }
+
+    function calculatePhasesWrist(repetitions) {
+        return repetitions
+            .map((rep, index) => {
+                const angles = rep.angles; // Массив замеров углов в повторении
+                if (!angles || angles.length === 0) {
+                    return null;
+                }
+
+                // Находим максимальный угол в повторении
+                const minAngle = Math.min(...angles.map((a) => a.angleWrist));
+                const loweringThreshold = minAngle;
+
+                let upPhaseStartTime = angles[0].time;
+                let upPhaseEndTime = null;
+                let downPhaseStartTime = null;
+                let downPhaseEndTime = angles[angles.length - 1].time;
+
+                for (let i = 0; i < angles.length; i++) {
+                    const angleData = angles[i];
+                    const angle = angleData.angleWrist;
+
+                    // Ищем момент перехода из фазы подъёма в фазу опускания
+                    if (angle <= loweringThreshold && !upPhaseEndTime) {
                         upPhaseEndTime = angleData.time;
                         downPhaseStartTime = angleData.time;
                         break;
@@ -1104,7 +1407,10 @@ function App() {
 
         // Обрабатываем данные для левой руки
         if (leftReps && leftReps.length > 0) {
-            const leftPhases = calculatePhases(leftReps);
+            let leftPhases = calculatePhases(leftReps);
+            if (displayedExercise === "wrist_curl") {
+                leftPhases = calculatePhasesWrist(leftReps);
+            }
             tempLeftPhasesData = [...leftPhases];
             setLeftRepetitions(leftReps);
         } else {
@@ -1113,7 +1419,10 @@ function App() {
 
         // Обрабатываем данные для правой руки
         if (rightReps && rightReps.length > 0) {
-            const rightPhases = calculatePhases(rightReps);
+            let rightPhases = calculatePhases(rightReps);
+            if (displayedExercise === "wrist_curl") {
+                rightPhases = calculatePhasesWrist(rightReps);
+            }
             tempRightPhasesData = [...rightPhases];
             setRightRepetitions(rightReps);
         } else {
@@ -1146,96 +1455,98 @@ function App() {
             const min = Math.min(...angularVelocities);
             const max = Math.max(...angularVelocities);
             const avg = angularVelocities.reduce((sum, val) => sum + val, 0) / angularVelocities.length;
-        
+
             // Фильтруем положительные (подъем) и отрицательные (опускание) значения
             const positiveVelocities = angularVelocities.filter((v) => v > 0); // Подъем
             const negativeVelocities = angularVelocities.filter((v) => v < 0); // Опускание
-        
+
             // Средние значения для подъема и опускания
             const avgUp = positiveVelocities.length > 0 ? positiveVelocities.reduce((sum, val) => sum + val, 0) / positiveVelocities.length : 0;
             const avgDown = negativeVelocities.length > 0 ? negativeVelocities.reduce((sum, val) => sum + val, 0) / negativeVelocities.length : 0;
-        
+
             return {
                 repetition: index + 1,
                 min,
                 max,
-                avgDown, 
-                avgUp, 
+                avgDown,
+                avgUp,
             };
         });
         setLeftHandStats(leftStats);
-        
+
         const rightStats = rightHandData.current.repetitions.map((rep, index) => {
             const angularVelocities = rep.angularVelocities.map((av) => av.angularVelocity);
             const min = Math.min(...angularVelocities);
             const max = Math.max(...angularVelocities);
             const avg = angularVelocities.reduce((sum, val) => sum + val, 0) / angularVelocities.length;
-        
+
             // Фильтруем положительные (подъем) и отрицательные (опускание) значения
             const positiveVelocities = angularVelocities.filter((v) => v > 0); // Подъем
             const negativeVelocities = angularVelocities.filter((v) => v < 0); // Опускание
-        
+
             // Средние значения для подъема и опускания
             const avgUp = positiveVelocities.length > 0 ? positiveVelocities.reduce((sum, val) => sum + val, 0) / positiveVelocities.length : 0;
             const avgDown = negativeVelocities.length > 0 ? negativeVelocities.reduce((sum, val) => sum + val, 0) / negativeVelocities.length : 0;
-        
+
             return {
                 repetition: index + 1,
                 min,
                 max,
-                avgDown, 
-                avgUp, 
+                avgDown,
+                avgUp,
             };
         });
         setRightHandStats(rightStats);
-        
+
         const bothStats = bothHandsData.current.repetitions.map((rep, index) => {
             const angularVelocitiesLeft = rep.angularVelocitiesLeft.map((av) => av.angularVelocity);
             const angularVelocitiesRight = rep.angularVelocitiesRight.map((av) => av.angularVelocity);
-        
+
             const minLeft = Math.min(...angularVelocitiesLeft);
             const maxLeft = Math.max(...angularVelocitiesLeft);
             const avgLeft = angularVelocitiesLeft.reduce((sum, val) => sum + val, 0) / angularVelocitiesLeft.length;
-        
+
             const minRight = Math.min(...angularVelocitiesRight);
             const maxRight = Math.max(...angularVelocitiesRight);
             const avgRight = angularVelocitiesRight.reduce((sum, val) => sum + val, 0) / angularVelocitiesRight.length;
-        
+
             // Фильтруем положительные (подъем) и отрицательные (опускание) значения для левой руки
             const positiveVelocitiesLeft = angularVelocitiesLeft.filter((v) => v > 0); // Подъем
             const negativeVelocitiesLeft = angularVelocitiesLeft.filter((v) => v < 0); // Опускание
-        
+
             // Средние значения для подъема и опускания (левая рука)
             const avgUpLeft = positiveVelocitiesLeft.length > 0 ? positiveVelocitiesLeft.reduce((sum, val) => sum + val, 0) / positiveVelocitiesLeft.length : 0;
             const avgDownLeft = negativeVelocitiesLeft.length > 0 ? negativeVelocitiesLeft.reduce((sum, val) => sum + val, 0) / negativeVelocitiesLeft.length : 0;
-        
+
             // Фильтруем положительные (подъем) и отрицательные (опускание) значения для правой руки
             const positiveVelocitiesRight = angularVelocitiesRight.filter((v) => v > 0); // Подъем
             const negativeVelocitiesRight = angularVelocitiesRight.filter((v) => v < 0); // Опускание
-        
+
             // Средние значения для подъема и опускания (правая рука)
             const avgUpRight = positiveVelocitiesRight.length > 0 ? positiveVelocitiesRight.reduce((sum, val) => sum + val, 0) / positiveVelocitiesRight.length : 0;
             const avgDownRight = negativeVelocitiesRight.length > 0 ? negativeVelocitiesRight.reduce((sum, val) => sum + val, 0) / negativeVelocitiesRight.length : 0;
-        
+
             return {
                 repetition: index + 1,
                 left: {
                     min: minLeft,
                     max: maxLeft,
-                    avgDown: avgDownLeft, 
+                    avgDown: avgDownLeft,
                     avgUp: avgUpLeft,
                 },
                 right: {
                     min: minRight,
                     max: maxRight,
-                    avgDown: avgDownRight, 
-                    avgUp: avgUpRight, 
+                    avgDown: avgDownRight,
+                    avgUp: avgUpRight,
                 },
             };
         });
         setBothHandsStats(bothStats);
 
         setShowCharts(true);
+        setDisplayedExercise(selectedExercise);
+
         // // Преобразуем объект в JSON-строку
         // const jsonString = JSON.stringify(results, null, 2);
 
@@ -1314,6 +1625,15 @@ function App() {
                             onChange={(e) => {
                                 setSelectedExercise(e.target.value);
                                 resetScenario();
+                                movementPhaseRef.current = "initial";
+                                handUp = false;
+                                setLeftRepetitions([]);
+                                setRightRepetitions([]);
+                                setBothRepetitions([]);
+                                setSelectedExercise(e.target.value);
+                                setShowCharts(false);
+                                leftHandData.current = { counter: 0, repetitions: [], lastLinearVelocity: 0, currentRepetition: null, maxAngleWrist: 0, minAngleWrist: 0, wristAmplitude: 0, maxShoulderAngle: 0, minShoulderAngle: 180, shoulderAmplitude: 0, maxElbowAngle: 0, minElbowAngle: 180, elbowAmplitude: 0, movementPhases: [], cycleTimes: [], angularVelocities: [], lastShoulderAngle: null, lastElbowAngle: null, lastTime: null, startTime: null };
+                                rightHandData.current = { counter: 0, repetitions: [], lastLinearVelocity: 0, currentRepetition: null, maxAngleWrist: 0, minAngleWrist: 0, wristAmplitude: 0, maxShoulderAngle: 0, minShoulderAngle: 180, shoulderAmplitude: 0, maxElbowAngle: 0, minElbowAngle: 180, elbowAmplitude: 0, movementPhases: [], cycleTimes: [], angularVelocities: [], lastShoulderAngle: null, lastElbowAngle: null, lastTime: null, startTime: null };
                             }}
                         />
                         <label htmlFor="radioArmRaise" style={{ fontSize: "20px" }}>
@@ -1329,6 +1649,15 @@ function App() {
                             onChange={(e) => {
                                 setSelectedExercise(e.target.value);
                                 resetScenario();
+                                movementPhaseRef.current = "initial";
+                                handUp = false;
+                                setLeftRepetitions([]);
+                                setRightRepetitions([]);
+                                setBothRepetitions([]);
+                                setSelectedExercise(e.target.value);
+                                setShowCharts(false);
+                                leftHandData.current = { counter: 0, repetitions: [], lastLinearVelocity: 0, currentRepetition: null, maxAngleWrist: 0, minAngleWrist: 0, wristAmplitude: 0, maxShoulderAngle: 0, minShoulderAngle: 180, shoulderAmplitude: 0, maxElbowAngle: 0, minElbowAngle: 180, elbowAmplitude: 0, movementPhases: [], cycleTimes: [], angularVelocities: [], lastShoulderAngle: null, lastElbowAngle: null, lastTime: null, startTime: null };
+                                rightHandData.current = { counter: 0, repetitions: [], lastLinearVelocity: 0, currentRepetition: null, maxAngleWrist: 0, minAngleWrist: 0, wristAmplitude: 0, maxShoulderAngle: 0, minShoulderAngle: 180, shoulderAmplitude: 0, maxElbowAngle: 0, minElbowAngle: 180, elbowAmplitude: 0, movementPhases: [], cycleTimes: [], angularVelocities: [], lastShoulderAngle: null, lastElbowAngle: null, lastTime: null, startTime: null };
                             }}
                         />
                         <label htmlFor="radioWristCurl" style={{ fontSize: "20px" }}>
@@ -1370,7 +1699,7 @@ function App() {
                 )}
                 <div id="stats">
                     <div id="message" style={{ fontSize: "30px" }}>
-                        {currentHandPhaseRef.current === "both" ? "Поднимите обе руки вверх" : `Поднимите ${currentHand === "left" ? "левую" : "правую"} руку вверх`}
+                        {displayMessage}
                     </div>
 
                     <div id="counter" style={{ fontSize: "30px" }}>
@@ -1385,18 +1714,30 @@ function App() {
             </div>
             {showCharts && (
                 <div>
-                    <h2>Результаты упражнения</h2>
-                    <GraphSingleHand repetitions={leftRepetitions} handLabel="Левая рука" lineColor="rgba(75, 192, 192, 1)" />
-                    <GraphSingleHand repetitions={rightRepetitions} handLabel="Правая рука" lineColor="rgba(153, 102, 255, 1)" />
-                    <GraphBothHands bothRepetitions={bothRepetitions} />
+                    {/* <button
+                        onClick={() => exportChartsToPDF(".graph-container", "arm_raise_report")}
+                        style={{
+                            padding: "12px 24px",
+                            fontSize: "18px",
+                            margin: "20px 0",
+                            backgroundColor: "#2196F3",
+                            color: "white",
+                            border: "none",
+                            borderRadius: "8px",
+                            cursor: "pointer",
+                            boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                            transition: "all 0.3s ease",
+                            ":hover": {
+                                backgroundColor: "#1976D2",
+                                transform: "translateY(-2px)",
+                            },
+                        }}
+                    >📥 Сохранить отчёт в PDF
+                    </button>
 
-                    <h2>Графики фаз движения</h2>
-                    {/* Отображаем графики для левой и правой руки с их данными */}
-                    <MovementPhaseChart phasesDataLeft={leftPhasesData} phasesDataRight={[]} handLabel="Левая рука" />
-                    <MovementPhaseChart phasesDataLeft={[]} phasesDataRight={rightPhasesData} handLabel="Правая рука" />
-                    {/* Отображаем график для обеих рук, используя данные фаз из exercises с обеими руками */}
-                    <MovementPhaseChart phasesDataLeft={bothPhasesData.left} phasesDataRight={bothPhasesData.right} handLabel="Обе руки" />
-
+                    {/* Графики */}
+                    {displayedExercise === "arm_raise" && <ArmRaiseCharts />}
+                    {displayedExercise === "wrist_curl" && <WristCurlCharts />}
                     <h2>Статистика угловой скорости</h2>
                     <h3>Левая рука</h3>
                     <ul style={{ listStyleType: "none", paddingLeft: "0" }}>
@@ -1408,7 +1749,6 @@ function App() {
                             </li>
                         ))}
                     </ul>
-
                     <h3>Правая рука</h3>
                     <ul style={{ listStyleType: "none", paddingLeft: "0" }}>
                         {rightHandStats.map((stat, index) => (
@@ -1419,8 +1759,7 @@ function App() {
                             </li>
                         ))}
                     </ul>
-
-                    <h3>Обе руки</h3>
+                    {bothPhasesData.length > 0 && <h3>Обе руки</h3>}
                     <ul style={{ listStyleType: "none", paddingLeft: "0" }}>
                         {bothHandsStats.map((stat, index) => (
                             <li key={index}>
