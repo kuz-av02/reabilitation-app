@@ -1,14 +1,13 @@
-// GraphSingleHand.js
-
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Line } from "react-chartjs-2";
-
 import { Chart as ChartJS, LineElement, PointElement, CategoryScale, LinearScale, Title, Tooltip, Legend } from "chart.js";
 import annotationPlugin from "chartjs-plugin-annotation";
 
 ChartJS.register(LineElement, PointElement, CategoryScale, LinearScale, Title, Tooltip, Legend, annotationPlugin);
 
 const GraphSingleHand = ({ repetitions, handLabel, lineColor }) => {
+    const [showAllRepetitions, setShowAllRepetitions] = useState(false);
+
     const normalizedCurves = useMemo(() => {
         if (!repetitions || !Array.isArray(repetitions) || repetitions.length === 0) {
             return [];
@@ -20,7 +19,7 @@ const GraphSingleHand = ({ repetitions, handLabel, lineColor }) => {
                     return [];
                 }
                 return rep.angles.map((pt) => ({
-                    percent: (pt.time / rep.duration) * 100, // Время уже относительное
+                    percent: (pt.time / rep.duration) * 100,
                     angle: pt.shoulderAngle,
                 }));
             })
@@ -36,24 +35,6 @@ const GraphSingleHand = ({ repetitions, handLabel, lineColor }) => {
             const avgAngle = totalAngle / curve.length;
             return avgAngle;
         });
-    }, [normalizedCurves]);
-
-    const averageCurve = useMemo(() => {
-        if (normalizedCurves.length === 0) {
-            return null;
-        }
-        const N = 100;
-        const points = [];
-        for (let i = 0; i <= N; i++) {
-            const targetPercent = (i / N) * 100;
-            const anglesAtPercent = normalizedCurves.map((curve) => {
-                const closest = curve.reduce((prev, curr) => (Math.abs(curr.percent - targetPercent) < Math.abs(prev.percent - targetPercent) ? curr : prev));
-                return closest.angle;
-            });
-            const avgAngle = anglesAtPercent.reduce((sum, val) => sum + val, 0) / anglesAtPercent.length;
-            points.push(avgAngle);
-        }
-        return points;
     }, [normalizedCurves]);
 
     const { minAvgIndex, maxAvgIndex } = useMemo(() => {
@@ -77,21 +58,52 @@ const GraphSingleHand = ({ repetitions, handLabel, lineColor }) => {
         return { minAvgIndex, maxAvgIndex };
     }, [averagesPerRepetition]);
 
-    const minAvgCurve = useMemo(() => {
-        if (minAvgIndex === null) {
+    const averageCurve = useMemo(() => {
+        if (normalizedCurves.length === 0) {
             return null;
         }
-        return normalizedCurves[minAvgIndex];
+        const N = 100;
+        const points = [];
+        for (let i = 0; i <= N; i++) {
+            const targetPercent = (i / N) * 100;
+            const anglesAtPercent = normalizedCurves.map((curve) => {
+                const closest = curve.reduce((prev, curr) => (Math.abs(curr.percent - targetPercent) < Math.abs(prev.percent - targetPercent) ? curr : prev));
+                return closest.angle;
+            });
+            const avgAngle = anglesAtPercent.reduce((sum, val) => sum + val, 0) / anglesAtPercent.length;
+            points.push(avgAngle);
+        }
+        return points;
+    }, [normalizedCurves]);
+
+    const minAvgCurve = useMemo(() => {
+        if (minAvgIndex === null || !normalizedCurves[minAvgIndex]) {
+            return null;
+        }
+        return getCurveAtPercentages(normalizedCurves[minAvgIndex]);
     }, [normalizedCurves, minAvgIndex]);
 
     const maxAvgCurve = useMemo(() => {
-        if (maxAvgIndex === null) {
+        if (maxAvgIndex === null || !normalizedCurves[maxAvgIndex]) {
             return null;
         }
-        return normalizedCurves[maxAvgIndex];
+        return getCurveAtPercentages(normalizedCurves[maxAvgIndex]);
     }, [normalizedCurves, maxAvgIndex]);
 
-    const getCurveAtPercentages = (curve) => {
+    const allRepetitionsCurves = useMemo(() => {
+        if (!showAllRepetitions || normalizedCurves.length === 0) {
+            return [];
+        }
+        return normalizedCurves.map((curve, idx) => ({
+            label: `Повторение ${idx + 1}`,
+            data: getCurveAtPercentages(curve),
+            borderColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.5)`,
+            borderWidth: 1,
+            fill: false,
+        }));
+    }, [normalizedCurves, showAllRepetitions]);
+
+    function getCurveAtPercentages(curve) {
         if (!curve) return null;
         const N = 100;
         const points = [];
@@ -101,10 +113,7 @@ const GraphSingleHand = ({ repetitions, handLabel, lineColor }) => {
             points.push(closest.angle);
         }
         return points;
-    };
-
-    const minCurveData = useMemo(() => getCurveAtPercentages(minAvgCurve), [minAvgCurve]);
-    const maxCurveData = useMemo(() => getCurveAtPercentages(maxAvgCurve), [maxAvgCurve]);
+    }
 
     const { maxAngleIndex, maxAngle } = useMemo(() => {
         if (!averageCurve) {
@@ -126,43 +135,71 @@ const GraphSingleHand = ({ repetitions, handLabel, lineColor }) => {
             return null;
         }
         const labels = Array.from({ length: 101 }, (_, i) => `${i}%`);
-        const datasets = [
-            {
+        
+        const datasets = [];
+        
+        if (showAllRepetitions) {
+            // Добавляем все повторения
+            datasets.push(...allRepetitionsCurves);
+            
+            // Добавляем среднюю кривую поверх всех повторений
+            datasets.push({
                 label: `Средний угол (${handLabel})`,
                 data: averageCurve,
                 borderColor: lineColor,
-                fill: false,
-            },
-        ];
-        if (minCurveData) {
-            datasets.push({
-                label: `Мин. угол повторения (${handLabel})`,
-                data: minCurveData,
-                borderColor: "rgba(255, 99, 132, 0.5)", // Красный цвет с прозрачностью
-                borderDash: [5, 5],
+                borderWidth: 3,
                 fill: false,
             });
-        }
-        if (maxCurveData) {
+        } else {
+            // Только среднее, мин и макс
             datasets.push({
-                label: `Макс. угол повторения (${handLabel})`,
-                data: maxCurveData,
-                borderColor: "rgba(54, 162, 235, 0.5)", // Синий цвет с прозрачностью
-                borderDash: [5, 5],
+                label: `Средний угол (${handLabel})`,
+                data: averageCurve,
+                borderColor: lineColor,
+                borderWidth: 2,
                 fill: false,
             });
+            
+            if (minAvgCurve) {
+                datasets.push({
+                    label: `Мин. угол повторения (${handLabel})`,
+                    data: minAvgCurve,
+                    borderColor: "rgba(255, 99, 132, 0.7)",
+                    borderDash: [5, 5],
+                    borderWidth: 2,
+                    fill: false,
+                });
+            }
+            
+            if (maxAvgCurve) {
+                datasets.push({
+                    label: `Макс. угол повторения (${handLabel})`,
+                    data: maxAvgCurve,
+                    borderColor: "rgba(54, 162, 235, 0.7)",
+                    borderDash: [5, 5],
+                    borderWidth: 2,
+                    fill: false,
+                });
+            }
         }
+
         return {
             labels,
             datasets,
         };
-    }, [averageCurve, minCurveData, maxCurveData, handLabel, lineColor]);
+    }, [averageCurve, minAvgCurve, maxAvgCurve, handLabel, lineColor, showAllRepetitions, allRepetitionsCurves]);
 
     const options = {
         responsive: true,
         plugins: {
             legend: { display: true },
-            title: { display: true, text: `График для ${handLabel}` },
+            title: { 
+                display: true, 
+                text: `График для ${handLabel}`,
+                font: {
+                    size: 16
+                }
+            },
             annotation: {
                 annotations: {
                     maxAngleLine: maxAngleIndex !== null && {
@@ -183,13 +220,49 @@ const GraphSingleHand = ({ repetitions, handLabel, lineColor }) => {
             },
         },
         scales: {
-            x: { title: { display: true, text: "Время цикла (%)" } },
-            y: { title: { display: true, text: "Угол (°)" } },
+            x: { 
+                title: { 
+                    display: true, 
+                    text: "Время цикла (%)",
+                    font: {
+                        size: 14
+                    }
+                } 
+            },
+            y: { 
+                title: { 
+                    display: true, 
+                    text: "Угол (°)",
+                    font: {
+                        size: 14
+                    }
+                } 
+            },
         },
     };
 
-    // Условный рендеринг внутри JSX
-    return <div>{data ? <Line data={data} options={options} /> : <div>Нет данных для отображения графика {handLabel}</div>}</div>;
+    return (
+        <div style={{ margin: "20px 0", position: "relative" }}>
+            <button 
+                onClick={() => setShowAllRepetitions(!showAllRepetitions)}
+                style={{
+                    position: "absolute",
+                    right: "10px",
+                    top: "10px",
+                    padding: "5px 10px",
+                    backgroundColor: showAllRepetitions ? "#f44336" : "#4CAF50",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    zIndex: 10
+                }}
+            >
+                {showAllRepetitions ? "Показать среднее, max, min" : "Показать все повторения"}
+            </button>
+            {data ? <Line data={data} options={options} /> : <div>Нет данных для отображения графика {handLabel}</div>}
+        </div>
+    );
 };
 
 export default GraphSingleHand;

@@ -37,6 +37,10 @@ function App() {
     const [bothHandsStats, setBothHandsStats] = useState([]);
     const [displayedExercise, setDisplayedExercise] = useState(null);
     const [displayMessage, setDisplayMessage] = useState(currentHandPhaseRef.current === "both" ? "Поднимите обе руки вверх" : `Поднимите ${currentHand === "left" ? "левую" : "правую"} руку вверх`);
+    const [angleThresholds, setAngleThresholds] = useState({
+        up: 20,
+        down: 20,
+    });
 
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
@@ -916,8 +920,8 @@ function App() {
         handData.lastTime = currentTime;
 
         // Логика фаз движения
-        const angleThresholdUp = 20;
-        const angleThresholdDown = 20;
+        const angleThresholdUp = angleThresholds.up;
+        const angleThresholdDown = angleThresholds.down;
 
         if (movementPhaseRef.current === "initial" && shoulderAngleLeft > angleThresholdUp && shoulderAngleRight > angleThresholdUp) {
             movementPhaseRef.current = "подъём";
@@ -1092,8 +1096,8 @@ function App() {
         handData.lastTime = currentTime;
 
         // Логика фаз движения
-        const angleThresholdUp = 20;
-        const angleThresholdDown = 20;
+        const angleThresholdUp = angleThresholds.up;
+        const angleThresholdDown = angleThresholds.down;
 
         if (movementPhaseRef.current === "initial" && shoulderAngle > angleThresholdUp) {
             movementPhaseRef.current = "подъём";
@@ -1665,6 +1669,51 @@ function App() {
                         </label>
 
                         {/* Добавьте другие радиокнопки для других упражнений с уникальными ID и Value */}
+                    </div>
+                </fieldset>
+                <fieldset>
+                    <legend style={{ fontSize: "26px" }}>Настройки углов:</legend>
+                    <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem" }}>
+                        <div>
+                            <label htmlFor="angleThresholdUp" style={{ fontSize: "20px" }}>
+                                Угол подъема (°):
+                            </label>
+                            <input
+                                type="number"
+                                id="angleThresholdUp"
+                                value={angleThresholds.up}
+                                min="1"
+                                max="180"
+                                style={{ fontSize: "20px", marginLeft: "0.5rem", width: "60px" }}
+                                onChange={(e) =>
+                                    setAngleThresholds((prev) => ({
+                                        ...prev,
+                                        up: parseInt(e.target.value) || 20,
+                                    }))
+                                }
+                                disabled={webcamRunning}
+                            />
+                        </div>
+                        <div>
+                            <label htmlFor="angleThresholdDown" style={{ fontSize: "20px" }}>
+                                Угол опускания (°):
+                            </label>
+                            <input
+                                type="number"
+                                id="angleThresholdDown"
+                                value={angleThresholds.down}
+                                min="1"
+                                max="180"
+                                style={{ fontSize: "20px", marginLeft: "0.5rem", width: "60px" }}
+                                onChange={(e) =>
+                                    setAngleThresholds((prev) => ({
+                                        ...prev,
+                                        down: parseInt(e.target.value) || 20,
+                                    }))
+                                }
+                                disabled={webcamRunning}
+                            />
+                        </div>
                     </div>
                 </fieldset>
                 <div style={{ marginBottom: "1rem" }}>
