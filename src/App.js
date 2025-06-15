@@ -188,6 +188,22 @@ function App() {
         return () => {
             // Очистка таймера при размонтировании
             clearInterval(timerIdRef.current);
+
+            // Остановка камеры и очистка canvas
+            if (webcamRunning) {
+                const video = videoRef.current;
+                if (video && video.srcObject) {
+                    video.removeEventListener("loadeddata", predictWebcam);
+                    const stream = video.srcObject;
+                    const tracks = stream.getTracks();
+                    tracks.forEach((track) => {
+                        track.stop();
+                        stream.removeTrack(track);
+                    });
+                    video.srcObject = null;
+                }
+                clearCanvas();
+            }
         };
     }, []);
 
@@ -286,6 +302,14 @@ function App() {
         }
     };
 
+    const clearCanvas = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    };
+
     const enableCam = () => {
         if (!isModelLoaded) {
             console.log("Wait! poseLandmarker not loaded yet.");
@@ -306,13 +330,16 @@ function App() {
             setWebcamRunning(true);
 
             // Запускаем обратный отсчёт
-            startCountdown();
+            // startCountdown();
+            waitStart();
         } else {
             // Останавливаем упражнение
             setIsCountingDown(false);
             isCountingDownRef.current = false;
             setCountdown(5);
             setWebcamRunning(false);
+
+            clearCanvas();
 
             // Сбрасываем выбор руки для следующего упражнения
             setSelectedHand("");
@@ -435,13 +462,15 @@ function App() {
     const waitForUserInput = () => {
         return new Promise((resolve) => {
             const handleInteraction = () => {
+                // Удаляем оба слушателя при срабатывании
                 document.removeEventListener("keydown", handleInteraction);
                 document.removeEventListener("click", handleInteraction);
                 resolve();
             };
 
-            document.addEventListener("keydown", handleInteraction);
-            document.addEventListener("click", handleInteraction);
+            // Добавляем слушатели с { once: true } для автоматического удаления
+            document.addEventListener("keydown", handleInteraction, { once: true });
+            document.addEventListener("click", handleInteraction, { once: true });
         });
     };
 
@@ -471,6 +500,23 @@ function App() {
         resetScenario();
     };
 
+    const waitStart = async () => {
+        try {
+            isCountingDownRef.current = true;
+            setDisplayMessage("Нажмите любую клавишу или кнопку мыши для продолжения");
+
+            // Явно обновляем состояние перед ожиданием
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            await waitForUserInput();
+
+            isCountingDownRef.current = false;
+            setDisplayMessage(`Поднимите ${initialHandRef.current === "left" ? "левую" : "правую"} руку вверх`);
+        } catch (error) {
+            console.error("Error in waitStart:", error);
+        }
+    };
+
     const ArmRaiseCharts = () => (
         <>
             <h2>Результаты упражнения "Поднятие руки в сторону"</h2>
@@ -494,11 +540,14 @@ function App() {
             <MovementPhaseWrist phasesDataLeft={[]} phasesDataRight={rightPhasesData} handLabel="Правая кисть" /> */}
         </>
     );
+    let lastCallId = 0;
 
     async function predictWebcam() {
         if (!webcamRunning) {
             return;
         }
+        const callId = ++lastCallId;
+        // console.log(`[${callId}] predictWebcam started, exercise: ${selectedExercise}`);
 
         const canvasElement = canvasRef.current;
         const video = videoRef.current;
@@ -580,8 +629,8 @@ function App() {
                         });
 
                         // Разделяем ключевые точки на целевые и остальные
-                        const targetLandmarks = landmarks.filter((_, index) => targetIndices.includes(index + (targetHand === "left" ? 0 : 21)));
-                        const otherLandmarks = landmarks.filter((_, index) => !targetIndices.includes(index + (targetHand === "left" ? 0 : 21)));
+                        const targetLandmarks = landmarks.filter((_, index) => targetIndices.includes(index));
+                        const otherLandmarks = landmarks.filter((_, index) => !targetIndices.includes(index));
 
                         // Отрисовываем остальные ключевые точки белым цветом без заливки
                         drawingUtils.drawLandmarks(otherLandmarks, {
@@ -717,17 +766,17 @@ function App() {
         let wrist, elbow, fingerTip;
         if (currentHandRef.current === "left") {
             wrist = landmark[0];
-            elbow = {x: 0, y: landmark[0].y};
+            elbow = { x: 0, y: landmark[0].y };
             fingerTip = landmark[17];
         } else {
             wrist = landmark[0];
-            elbow = {x: landmark[0].x + 100, y: landmark[0].y};
+            elbow = { x: landmark[0].x + 100, y: landmark[0].y };
             fingerTip = landmark[17];
         }
 
         // Расчет углов и параметров
         const angleWrist = calcAngle(elbow, wrist, fingerTip);
-        console.log("angleWrist: ", angleWrist,"; x: ", elbow.x)
+        // console.log("angleWrist: ", angleWrist, "; x: ", elbow.x);
         const horizontalAngle = calcAngle(wrist, elbow, { x: 0, y: elbow.y });
         const velocity = calculateAngularVelocity(angleWrist, handData.lastAngle || angleWrist, currentTime - (handData.lastTime || currentTime));
 
@@ -963,8 +1012,8 @@ function App() {
             const relativeTime = timeInSeconds - handData.currentRepetition.startTime;
             handData.currentRepetition.anglesLeft.push({ time: relativeTime, shoulderAngle: shoulderAngleLeft, elbowAngleLeft: elbowAngleLeft, maxShoulderAngleLeft: handData.maxShoulderAngleLeft });
             handData.currentRepetition.anglesRight.push({ time: relativeTime, shoulderAngle: shoulderAngleRight, elbowAngleRight: elbowAngleRight, maxShoulderAngleRight: handData.maxShoulderAngleRight });
-            handData.currentRepetition.angularVelocitiesLeft.push({ time: timeInSeconds, angularVelocity: shoulderAngularVelocityLeft });
-            handData.currentRepetition.angularVelocitiesRight.push({ time: timeInSeconds, angularVelocity: shoulderAngularVelocityRight });
+            handData.currentRepetition.angularVelocitiesLeft.push({ time: timeInSeconds, angularVelocity: Math.abs(shoulderAngularVelocityLeft) });
+            handData.currentRepetition.angularVelocitiesRight.push({ time: timeInSeconds, angularVelocity: Math.abs(shoulderAngularVelocityRight) });
             handData.currentRepetition.linearVelocitiesLeft = handData.currentRepetition.linearVelocitiesLeft || [];
             handData.currentRepetition.linearVelocitiesLeft.push({
                 time: timeInSeconds,
@@ -1152,7 +1201,7 @@ function App() {
         if (handData.currentRepetition) {
             const relativeTime = timeInSeconds - handData.currentRepetition.startTime;
             handData.currentRepetition.angles.push({ time: relativeTime, elbowAngle: elbowAngle, shoulderAngle: shoulderAngle, maxShoulderAngle: handData.maxShoulderAngle });
-            handData.currentRepetition.angularVelocities.push({ time: timeInSeconds, angularVelocity: shoulderAngularVelocity });
+            handData.currentRepetition.angularVelocities.push({ time: timeInSeconds, angularVelocity: Math.abs(shoulderAngularVelocity) });
             handData.currentRepetition.linearVelocities = handData.currentRepetition.linearVelocities || [];
             handData.currentRepetition.linearVelocities.push({
                 time: timeInSeconds,
@@ -1668,6 +1717,8 @@ function App() {
         });
         setBothHandsStats(bothStats);
 
+        clearCanvas();
+
         setShowCharts(true);
         setDisplayedExercise(selectedExercise);
 
@@ -1747,15 +1798,15 @@ function App() {
                             name="exercise"
                             defaultChecked={selectedExercise === "arm_raise"}
                             onChange={(e) => {
-                                setSelectedExercise(e.target.value);
+                                setSelectedExercise("arm_raise");
                                 resetScenario();
                                 movementPhaseRef.current = "initial";
                                 handUp = false;
                                 setLeftRepetitions([]);
                                 setRightRepetitions([]);
                                 setBothRepetitions([]);
-                                setSelectedExercise(e.target.value);
                                 setShowCharts(false);
+                                clearCanvas();
                                 leftHandData.current = { counter: 0, repetitions: [], lastLinearVelocity: 0, currentRepetition: null, maxAngleWrist: 0, minAngleWrist: 0, wristAmplitude: 0, maxShoulderAngle: 0, minShoulderAngle: 180, shoulderAmplitude: 0, maxElbowAngle: 0, minElbowAngle: 180, elbowAmplitude: 0, movementPhases: [], cycleTimes: [], angularVelocities: [], lastShoulderAngle: null, lastElbowAngle: null, lastTime: null, startTime: null };
                                 rightHandData.current = { counter: 0, repetitions: [], lastLinearVelocity: 0, currentRepetition: null, maxAngleWrist: 0, minAngleWrist: 0, wristAmplitude: 0, maxShoulderAngle: 0, minShoulderAngle: 180, shoulderAmplitude: 0, maxElbowAngle: 0, minElbowAngle: 180, elbowAmplitude: 0, movementPhases: [], cycleTimes: [], angularVelocities: [], lastShoulderAngle: null, lastElbowAngle: null, lastTime: null, startTime: null };
                             }}
@@ -1771,15 +1822,15 @@ function App() {
                             name="exercise"
                             defaultChecked={selectedExercise === "wrist_curl"}
                             onChange={(e) => {
-                                setSelectedExercise(e.target.value);
+                                setSelectedExercise("wrist_curl");
                                 resetScenario();
                                 movementPhaseRef.current = "initial";
                                 handUp = false;
                                 setLeftRepetitions([]);
                                 setRightRepetitions([]);
                                 setBothRepetitions([]);
-                                setSelectedExercise(e.target.value);
                                 setShowCharts(false);
+                                clearCanvas();
                                 leftHandData.current = { counter: 0, repetitions: [], lastLinearVelocity: 0, currentRepetition: null, maxAngleWrist: 0, minAngleWrist: 0, wristAmplitude: 0, maxShoulderAngle: 0, minShoulderAngle: 180, shoulderAmplitude: 0, maxElbowAngle: 0, minElbowAngle: 180, elbowAmplitude: 0, movementPhases: [], cycleTimes: [], angularVelocities: [], lastShoulderAngle: null, lastElbowAngle: null, lastTime: null, startTime: null };
                                 rightHandData.current = { counter: 0, repetitions: [], lastLinearVelocity: 0, currentRepetition: null, maxAngleWrist: 0, minAngleWrist: 0, wristAmplitude: 0, maxShoulderAngle: 0, minShoulderAngle: 180, shoulderAmplitude: 0, maxElbowAngle: 0, minElbowAngle: 180, elbowAmplitude: 0, movementPhases: [], cycleTimes: [], angularVelocities: [], lastShoulderAngle: null, lastElbowAngle: null, lastTime: null, startTime: null };
                             }}
@@ -1907,47 +1958,113 @@ function App() {
                     {/* Графики */}
                     {displayedExercise === "arm_raise" && <ArmRaiseCharts />}
                     {displayedExercise === "wrist_curl" && <WristCurlCharts />}
-                    <h2>Статистика угловой скорости</h2>
-                    <h3>Левая рука</h3>
-                    <ul style={{ listStyleType: "none", paddingLeft: "0" }}>
-                        {leftHandStats.map((stat, index) => (
-                            <li key={index}>
-                                Повторение {stat.repetition}: Min = {stat.min.toFixed(2)}°/s, Max = {stat.max.toFixed(2)}°/s
-                                <br />
-                                Опускание: Avg = {stat.avgDown.toFixed(2)}°/s, Подъем: Avg = {stat.avgUp.toFixed(2)}°/s
-                            </li>
-                        ))}
-                    </ul>
-                    <h3>Правая рука</h3>
-                    <ul style={{ listStyleType: "none", paddingLeft: "0" }}>
-                        {rightHandStats.map((stat, index) => (
-                            <li key={index}>
-                                Повторение {stat.repetition}: Min = {stat.min.toFixed(2)}°/s, Max = {stat.max.toFixed(2)}°/s
-                                <br />
-                                Опускание: Avg = {stat.avgDown.toFixed(2)}°/s, Подъем: Avg = {stat.avgUp.toFixed(2)}°/s
-                            </li>
-                        ))}
-                    </ul>
-                    {bothPhasesData.length > 0 && <h3>Обе руки</h3>}
-                    <ul style={{ listStyleType: "none", paddingLeft: "0" }}>
-                        {bothHandsStats.map((stat, index) => (
-                            <li key={index}>
-                                Повторение {stat.repetition}:
-                                <ul style={{ listStyleType: "none", paddingLeft: "20px" }}>
-                                    <li>
-                                        Левая рука: Min = {stat.left.min.toFixed(2)}°/s, Max = {stat.left.max.toFixed(2)}°/s
-                                        <br />
-                                        Опускание: Avg = {stat.left.avgDown.toFixed(2)}°/s, Подъем: Avg = {stat.left.avgUp.toFixed(2)}°/s
-                                    </li>
-                                    <li>
-                                        Правая рука: Min = {stat.right.min.toFixed(2)}°/s, Max = {stat.right.max.toFixed(2)}°/s
-                                        <br />
-                                        Опускание: Avg = {stat.right.avgDown.toFixed(2)}°/s, Подъем: Avg = {stat.right.avgUp.toFixed(2)}°/s
-                                    </li>
-                                </ul>
-                            </li>
-                        ))}
-                    </ul>
+                    {/* Таблица для левой руки */}
+                    <div style={{ overflowX: "auto", marginBottom: "30px" }}>
+                        <h3>Левая рука</h3>
+                        <table
+                            style={{
+                                borderCollapse: "collapse",
+                                width: "100%",
+                                maxWidth: "1000px",
+                                fontSize: "14px",
+                                margin: "0 auto",
+                            }}
+                        >
+                            <thead>
+                                <tr style={{ backgroundColor: "#f2f2f2" }}>
+                                    <th style={{ border: "1px solid #ddd", padding: "8px" }}>Повторение</th>
+                                    <th style={{ border: "1px solid #ddd", padding: "8px" }}>Max (°/s)</th>
+                                    <th style={{ border: "1px solid #ddd", padding: "8px" }}>Avg (°/s)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {leftHandStats.map((stat, index) => (
+                                    <tr key={index}>
+                                        <td style={{ border: "1px solid #ddd", padding: "8px" }}>{stat.repetition}</td>
+                                        <td style={{ border: "1px solid #ddd", padding: "8px" }}>{stat.max.toFixed(2)}</td>
+                                        <td style={{ border: "1px solid #ddd", padding: "8px" }}>{stat.avgUp.toFixed(2)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    {/* Таблица для правой руки */}
+                    <div style={{ overflowX: "auto", marginBottom: "30px" }}>
+                        <h3>Правая рука</h3>
+                        <table
+                            style={{
+                                borderCollapse: "collapse",
+                                width: "100%",
+                                maxWidth: "1000px",
+                                fontSize: "14px",
+                                margin: "0 auto",
+                            }}
+                        >
+                            <thead>
+                                <tr style={{ backgroundColor: "#f2f2f2" }}>
+                                    <th style={{ border: "1px solid #ddd", padding: "8px" }}>Повторение</th>
+                                    <th style={{ border: "1px solid #ddd", padding: "8px" }}>Max (°/s)</th>
+                                    <th style={{ border: "1px solid #ddd", padding: "8px" }}>Avg (°/s)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {rightHandStats.map((stat, index) => (
+                                    <tr key={index}>
+                                        <td style={{ border: "1px solid #ddd", padding: "8px" }}>{stat.repetition}</td>
+                                        <td style={{ border: "1px solid #ddd", padding: "8px" }}>{stat.max.toFixed(2)}</td>
+                                        <td style={{ border: "1px solid #ddd", padding: "8px" }}>{stat.avgUp.toFixed(2)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Таблица для обеих рук */}
+                    {bothHandsStats.length > 0 && (
+                        <div style={{ overflowX: "auto", marginBottom: "30px" }}>
+                            <h3>Обе руки</h3>
+                            <table
+                                style={{
+                                    borderCollapse: "collapse",
+                                    width: "100%",
+                                    maxWidth: "1000px",
+                                    fontSize: "14px",
+                                    margin: "0 auto",
+                                }}
+                            >
+                                <thead>
+                                    <tr style={{ backgroundColor: "#f2f2f2" }}>
+                                        <th style={{ border: "1px solid #ddd", padding: "8px" }} rowSpan="2">
+                                            Повторение
+                                        </th>
+                                        <th style={{ border: "1px solid #ddd", padding: "8px" }} colSpan="2">
+                                            Левая рука
+                                        </th>
+                                        <th style={{ border: "1px solid #ddd", padding: "8px" }} colSpan="2">
+                                            Правая рука
+                                        </th>
+                                    </tr>
+                                    <tr style={{ backgroundColor: "#f2f2f2" }}>
+                                        <th style={{ border: "1px solid #ddd", padding: "8px" }}>Max (°/s)</th>
+                                        <th style={{ border: "1px solid #ddd", padding: "8px" }}>Avg (°/s)</th>
+                                        <th style={{ border: "1px solid #ddd", padding: "8px" }}>Max (°/s)</th>
+                                        <th style={{ border: "1px solid #ddd", padding: "8px" }}>Avg (°/s)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {bothHandsStats.map((stat, index) => (
+                                        <tr key={index}>
+                                            <td style={{ border: "1px solid #ddd", padding: "8px" }}>{stat.repetition}</td>
+                                            <td style={{ border: "1px solid #ddd", padding: "8px" }}>{stat.left.max.toFixed(2)}</td>
+                                            <td style={{ border: "1px solid #ddd", padding: "8px" }}>{stat.left.avgUp.toFixed(2)}</td>
+                                            <td style={{ border: "1px solid #ddd", padding: "8px" }}>{stat.right.max.toFixed(2)}</td>
+                                            <td style={{ border: "1px solid #ddd", padding: "8px" }}>{stat.right.avgUp.toFixed(2)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
