@@ -437,24 +437,8 @@ function App() {
         },
         wrist_curl: {
             name: "Поднятие кисти",
-            targetConnections: {
-                left: [
-                    { start: 0, end: 17 },
-                    { start: 17, end: 18 },
-                    { start: 18, end: 19 },
-                    { start: 19, end: 20 },
-                ],
-                right: [
-                    { start: 0, end: 17 },
-                    { start: 17, end: 18 },
-                    { start: 18, end: 19 },
-                    { start: 19, end: 20 },
-                ],
-            },
-            targetIndices: {
-                left: [0, 17, 18, 19, 20],
-                right: [0, 17, 18, 19, 20],
-            },
+            targetConnections: { left: [], right: [] },
+            targetIndices: { left: [], right: [] },
             analyzeFunction: analyzeWristCurl,
         },
     };
@@ -622,11 +606,11 @@ function App() {
                             lineWidth: 2,
                         });
 
-                        // Отрисовываем соединения целевой руки зелёным цветом
-                        drawingUtils.drawConnectors(landmarks, targetConnections, {
-                            color: "#00FF00",
-                            lineWidth: 2,
-                        });
+                        // // Отрисовываем соединения целевой руки зелёным цветом
+                        // drawingUtils.drawConnectors(landmarks, targetConnections, {
+                        //     color: "#00FF00",
+                        //     lineWidth: 2,
+                        // });
 
                         // Разделяем ключевые точки на целевые и остальные
                         const targetLandmarks = landmarks.filter((_, index) => targetIndices.includes(index));
@@ -640,13 +624,66 @@ function App() {
                             radius: (data) => DrawingUtils.lerp(data.from?.z ?? 0.0, -0.15, 0.1, 5, 1),
                         });
 
-                        // Отрисовываем ключевые точки целевой руки зелёным цветом без заливки
-                        drawingUtils.drawLandmarks(targetLandmarks, {
-                            color: "#00FF00",
-                            fillColor: "transparent",
-                            lineWidth: 2,
-                            radius: (data) => DrawingUtils.lerp(data.from?.z ?? 0.0, -0.15, 0.1, 5, 1),
-                        });
+                        // // Отрисовываем ключевые точки целевой руки зелёным цветом без заливки
+                        // drawingUtils.drawLandmarks(targetLandmarks, {
+                        //     color: "#00FF00",
+                        //     fillColor: "transparent",
+                        //     lineWidth: 2,
+                        //     radius: (data) => DrawingUtils.lerp(data.from?.z ?? 0.0, -0.15, 0.1, 5, 1),
+                        // });
+
+                        // Добавляем новую точку и соединение
+                        if (landmarks.length >= 18) {
+                            // Проверяем, что есть все нужные точки
+                            const point0 = landmarks[0]; // Точка запястья
+                            const point5 = landmarks[5]; // Точка большого пальца
+                            const point17 = landmarks[17]; // Точка мизинца
+
+                            // Находим середину между точками 5 и 17
+                            const midPoint = {
+                                x: (point5.x + point17.x) / 2,
+                                y: (point5.y + point17.y) / 2,
+                                z: (point5.z + point17.z) / 2,
+                            };
+
+                            // Создаем новую точку - пересечение линии из точки 0 с серединой линии 5-17
+                            const newPoint = {
+                                x: (point0.x + midPoint.x) / 2,
+                                y: (point0.y + midPoint.y) / 2,
+                                z: (point0.z + midPoint.z) / 2,
+                            };
+
+                            // Отрисовываем новую точку красным цветом
+                            drawingUtils.drawLandmarks([midPoint], {
+                                color: "#FF0000",
+                                fillColor: "#FF0000",
+                                lineWidth: 2,
+                                radius: 5, // Больший радиус для лучшей видимости
+                            });
+
+                            // Отрисовываем соединение между точкой 0 и новой точкой
+                            drawingUtils.drawConnectors([point0, midPoint], [{ start: 0, end: 1 }], {
+                                color: "#FF0000",
+                                lineWidth: 2,
+                            });
+
+                            drawingUtils.drawConnectors([landmarks[5], landmarks[17]], [{ start: 0, end: 1 }], {
+                                color: "#FF0000",
+                                lineWidth: 2,
+                            });
+
+                            if (targetHand === "left") {
+                                drawingUtils.drawConnectors([landmarks[0], { x: landmarks[0].x + 100, y: landmarks[0].y, z: landmarks[0].z }], [{ start: 0, end: 1 }], {
+                                    color: "#FF0000",
+                                    lineWidth: 2,
+                                });
+                            } else {
+                                drawingUtils.drawConnectors([landmarks[0], { x: 0, y: landmarks[0].y, z: landmarks[0].z }], [{ start: 0, end: 1 }], {
+                                    color: "#FF0000",
+                                    lineWidth: 2,
+                                });
+                            }
+                        }
 
                         // Анализ движения кисти
                         if (exerciseData.analyzeFunction) {
@@ -762,16 +799,26 @@ function App() {
         handData.currentRepetition = handData.currentRepetition || null;
         // handData.lastTime = timeInSeconds;
 
+        const point5 = landmark[5]; // Точка большого пальца
+        const point17 = landmark[17]; // Точка мизинца
+
+        // Находим середину между точками 5 и 17
+        const midPoint = {
+            x: (point5.x + point17.x) / 2,
+            y: (point5.y + point17.y) / 2,
+            z: (point5.z + point17.z) / 2,
+        };
+
         // Получение ключевых точек
         let wrist, elbow, fingerTip;
         if (currentHandRef.current === "left") {
             wrist = landmark[0];
             elbow = { x: 0, y: landmark[0].y };
-            fingerTip = landmark[17];
+            fingerTip = midPoint;
         } else {
             wrist = landmark[0];
             elbow = { x: landmark[0].x + 100, y: landmark[0].y };
-            fingerTip = landmark[17];
+            fingerTip = midPoint;
         }
 
         // Расчет углов и параметров
