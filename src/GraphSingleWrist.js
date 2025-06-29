@@ -7,36 +7,51 @@ ChartJS.register(LineElement, PointElement, CategoryScale, LinearScale, Title, T
 
 const GraphSingleWrist = ({ repetitions, handLabel, lineColor }) => {
     const [showAllRepetitions, setShowAllRepetitions] = useState(false);
+    const [hiddenRepetitions, setHiddenRepetitions] = useState([]);
 
-    // Нормализуем данные всех повторений
+    // Генератор цветов для повторений
+    const generateColor = (index, total) => {
+        const hue = (index * 360 / total) % 360;
+        return `hsl(${hue}, 70%, 50%)`;
+    };
+
+    // Нормализуем данные всех повторений с сохранением индексов и цветов
     const normalizedCurves = useMemo(() => {
-        if (!repetitions || !Array.isArray(repetitions) || repetitions.length === 0) {
-            return [];
-        }
+        if (!repetitions || !Array.isArray(repetitions)) return [];
+        
         return repetitions
-            .map((rep) => {
-                if (!rep.duration || rep.duration === 0 || !rep.angles || !Array.isArray(rep.angles) || rep.angles.length === 0) {
+            .map((rep, index) => {
+                if (!rep.duration || rep.duration === 0 || !rep.angles || !Array.isArray(rep.angles)) {
                     console.error("Invalid repetition data:", rep);
                     return null;
                 }
-                return rep.angles.map((pt) => ({
-                    percent: (pt.time / rep.duration) * 100,
-                    angle: pt.angleWrist,
-                }));
+                return {
+                    index,
+                    color: generateColor(index, repetitions.length),
+                    points: rep.angles.map(pt => ({
+                        percent: (pt.time / rep.duration) * 100,
+                        angle: pt.angleWrist,
+                    }))
+                };
             })
-            .filter(curve => curve !== null);
+            .filter(rep => rep !== null);
     }, [repetitions]);
+
+    // Фильтруем кривые, исключая скрытые повторения
+    const filteredCurves = useMemo(() => {
+        return normalizedCurves.filter(rep => !hiddenRepetitions.includes(rep.index));
+    }, [normalizedCurves, hiddenRepetitions]);
 
     // Находим кривые с максимальным и минимальным изменением угла
     const { maxCurve, minCurve } = useMemo(() => {
-        if (normalizedCurves.length === 0) return { maxCurve: null, minCurve: null };
+        if (filteredCurves.length === 0) return { maxCurve: null, minCurve: null };
 
         let maxAmplitude = -Infinity;
         let minAmplitude = Infinity;
         let maxCurve = null;
         let minCurve = null;
 
-        normalizedCurves.forEach(curve => {
+        filteredCurves.forEach(({ points: curve }) => {
             const angles = curve.map(p => p.angle);
             const amplitude = Math.max(...angles) - Math.min(...angles);
             
@@ -52,17 +67,17 @@ const GraphSingleWrist = ({ repetitions, handLabel, lineColor }) => {
         });
 
         return { maxCurve, minCurve };
-    }, [normalizedCurves]);
+    }, [filteredCurves]);
 
     // Создаем среднюю кривую
     const averageCurve = useMemo(() => {
-        if (normalizedCurves.length === 0) return null;
+        if (filteredCurves.length === 0) return null;
 
         const N = 100;
         const points = [];
         for (let i = 0; i <= N; i++) {
             const targetPercent = (i / N) * 100;
-            const anglesAtPercent = normalizedCurves.map(curve => {
+            const anglesAtPercent = filteredCurves.map(({ points: curve }) => {
                 const closest = curve.reduce((prev, curr) => 
                     Math.abs(curr.percent - targetPercent) < Math.abs(prev.percent - targetPercent) ? curr : prev
                 );
@@ -71,7 +86,7 @@ const GraphSingleWrist = ({ repetitions, handLabel, lineColor }) => {
             points.push(anglesAtPercent.reduce((sum, val) => sum + val, 0) / anglesAtPercent.length);
         }
         return points;
-    }, [normalizedCurves]);
+    }, [filteredCurves]);
 
     // Находим максимальный угол для средней кривой
     const { maxAngleIndex, maxAngle } = useMemo(() => {
@@ -108,21 +123,29 @@ const GraphSingleWrist = ({ repetitions, handLabel, lineColor }) => {
 
     // Все повторения для отображения
     const allRepetitionsCurves = useMemo(() => {
-        if (!showAllRepetitions || normalizedCurves.length === 0) {
-            return [];
-        }
-        return normalizedCurves.map((curve, idx) => ({
-            label: `Повторение ${idx + 1}`,
-            data: getCurveData(curve),
-            borderColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.5)`,
-            borderWidth: 1,
-            fill: false,
+        if (!showAllRepetitions || normalizedCurves.length === 0) return [];
+        
+        return normalizedCurves.map(({ index, points, color }) => ({
+            label: `Повторение ${index + 1}`,
+            data: getCurveData(points),
+            borderColor: hiddenRepetitions.includes(index) 
+                ? `${color.replace('%)', '%, 0.2)')}` 
+                : color,
+            borderWidth: hiddenRepetitions.includes(index) ? 1 : 2,
+            borderDash: hiddenRepetitions.includes(index) ? [] : [5, 5],
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            hidden: hiddenRepetitions.includes(index),
         }));
-    }, [normalizedCurves, showAllRepetitions]);
+    }, [showAllRepetitions, normalizedCurves, hiddenRepetitions]);
+
+    const toggleRepetitionVisibility = (index) => {
+        setHiddenRepetitions(prev => 
+            prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]
+        );
+    };
 
     const data = useMemo(() => {
-        if (!averageCurve) return null;
-
         const datasets = [];
 
         if (showAllRepetitions) {
@@ -130,40 +153,51 @@ const GraphSingleWrist = ({ repetitions, handLabel, lineColor }) => {
             datasets.push(...allRepetitionsCurves);
             
             // Добавляем среднюю кривую поверх всех повторений
-            datasets.push({
-                label: `Средний угол (${handLabel})`,
-                data: averageCurve,
-                borderColor: lineColor,
-                borderWidth: 3,
-                fill: false,
-            });
+            if (filteredCurves.length > 0) {
+                datasets.push({
+                    label: `Средний угол (${handLabel})`,
+                    data: averageCurve || Array(101).fill(0),
+                    borderColor: lineColor,
+                    borderWidth: 3,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    fill: false,
+                });
+            }
         } else {
-            // Только среднее, мин и макс
+            // Всегда показываем среднюю кривую
             datasets.push({
                 label: `Средний угол (${handLabel})`,
-                data: averageCurve,
+                data: averageCurve || Array(101).fill(0),
                 borderColor: lineColor,
                 borderWidth: 2,
-                tension: 0.1,
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                fill: false,
             });
 
-            if (maxCurveData) {
+            // Добавляем мин/макс кривые, если есть данные
+            if (maxCurveData && filteredCurves.length > 0) {
                 datasets.push({
                     label: `Макс. изменение (${handLabel})`,
                     data: maxCurveData,
                     borderColor: 'rgba(255, 99, 132, 0.7)',
-                    borderWidth: 1,
+                    borderWidth: 2,
                     borderDash: [5, 5],
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
                 });
             }
 
-            if (minCurveData) {
+            if (minCurveData && filteredCurves.length > 0) {
                 datasets.push({
                     label: `Мин. изменение (${handLabel})`,
                     data: minCurveData,
                     borderColor: 'rgba(54, 162, 235, 0.7)',
-                    borderWidth: 1,
+                    borderWidth: 2,
                     borderDash: [5, 5],
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
                 });
             }
         }
@@ -172,18 +206,60 @@ const GraphSingleWrist = ({ repetitions, handLabel, lineColor }) => {
             labels: Array.from({ length: 101 }, (_, i) => `${i}%`),
             datasets,
         };
-    }, [averageCurve, maxCurveData, minCurveData, handLabel, lineColor, showAllRepetitions, allRepetitionsCurves]);
+    }, [
+        showAllRepetitions, 
+        allRepetitionsCurves, 
+        averageCurve, 
+        maxCurveData, 
+        minCurveData, 
+        handLabel, 
+        lineColor,
+        filteredCurves
+    ]);
 
     const options = {
         responsive: true,
         plugins: {
+            legend: { 
+                display: true,
+                onClick: (e, legendItem, legend) => {
+                    const index = legendItem.datasetIndex;
+                    const meta = legend.chart.getDatasetMeta(index);
+                    
+                    // Для повторений - переключаем видимость
+                    if (meta?.label?.startsWith('Повторение')) {
+                        const repNumber = parseInt(meta.label.split(' ')[1]) - 1;
+                        toggleRepetitionVisibility(repNumber);
+                    } 
+                    // Для остальных элементов (среднее, мин, макс) - стандартное поведение
+                    else {
+                        meta.hidden = !meta.hidden;
+                        legend.chart.update();
+                    }
+                }
+            },
+            tooltip: {
+                callbacks: {
+                    label: (context) => {
+                        const label = context.dataset.label || '';
+                        if (label.startsWith('Повторение')) {
+                            const repNumber = parseInt(label.split(' ')[1]) - 1;
+                            return hiddenRepetitions.includes(repNumber) 
+                                ? `${label} (скрыто)` 
+                                : `${label}: ${context.parsed.y.toFixed(2)}°`;
+                        }
+                        return `${label}: ${context.parsed.y.toFixed(2)}°`;
+                    }
+                }
+            },
             title: {
                 display: true,
                 text: `Динамика кисти - ${handLabel}`,
+                font: { size: 16 }
             },
             annotation: {
                 annotations: {
-                    minAngleLine: maxAngleIndex !== null && {
+                    maxAngleLine: maxAngleIndex !== null && {
                         type: "line",
                         xMin: maxAngleIndex,
                         xMax: maxAngleIndex,
@@ -191,9 +267,10 @@ const GraphSingleWrist = ({ repetitions, handLabel, lineColor }) => {
                         borderWidth: 2,
                         borderDash: [10, 5],
                         label: {
-                            content: `Мин. угол (${maxAngle?.toFixed(2)}°)`,
+                            content: `Макс. угол (${maxAngle?.toFixed(2) || '0'}°)`,
                             enabled: true,
                             position: "bottom",
+                            backgroundColor: "rgba(255, 255, 255, 0.8)",
                         },
                     },
                 },
@@ -204,6 +281,7 @@ const GraphSingleWrist = ({ repetitions, handLabel, lineColor }) => {
                 title: {
                     display: true,
                     text: "Время цикла (%)",
+                    font: { size: 14 }
                 },
             },
             y: {
@@ -211,6 +289,7 @@ const GraphSingleWrist = ({ repetitions, handLabel, lineColor }) => {
                 title: {
                     display: true,
                     text: "Угол (°)",
+                    font: { size: 14 }
                 },
                 min: 0,
                 max: 100,
@@ -240,7 +319,16 @@ const GraphSingleWrist = ({ repetitions, handLabel, lineColor }) => {
             >
                 {showAllRepetitions ? "Показать среднее, max, min" : "Показать все повторения"}
             </button>
-            {data ? <Line data={data} options={options} /> : <div>Нет данных для отображения графика {handLabel}</div>}
+            
+            {repetitions?.length > 0 ? (
+                <Line 
+                    data={data} 
+                    options={options} 
+                    key={`${showAllRepetitions}-${hiddenRepetitions.join(',')}`}
+                />
+            ) : (
+                <div>Нет данных для отображения графика {handLabel}</div>
+            )}
         </div>
     );
 };
