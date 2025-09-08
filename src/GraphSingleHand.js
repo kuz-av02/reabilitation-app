@@ -14,6 +14,93 @@ const GraphSingleHand = ({ repetitions, handLabel, lineColor }) => {
         return repetitions?.map((_, index) => index) || [];
     }, [repetitions]);
 
+    // Функция для расчета угла между двумя точками (в градусах)
+    const calculateAngleBetweenPoints = (shoulderLeft, shoulderRight) => {
+        const normalizedLeft = shoulderLeft
+        const normalizedRight = shoulderRight
+        
+        // console.log("Нормализованные плечи:", normalizedLeft, normalizedRight);
+        
+        // Вектор между плечами
+        const dx = normalizedRight.x - normalizedLeft.x;
+        const dy = normalizedRight.y - normalizedLeft.y;
+        
+        // console.log("Δx:", dx, "Δy:", dy);
+        
+        // Если плечи на одном уровне по Y, угол с осью X = 0°
+        if (dy === 0) {
+            console.log("Плечи на одном уровне, угол = 0°");
+            return 0;
+        }
+        
+        // Если плечи на одном уровне по X, угол с осью X = 90°
+        if (dx === 0) {
+            console.log("Плечи вертикально, угол = 90°");
+            return 90;
+        }
+        
+        // Вычисляем угол между вектором плеч и осью X
+        const angleRad = Math.atan2(Math.abs(dy), Math.abs(dx));
+        const angleDeg = angleRad * (180 / Math.PI);
+        
+        console.log("Угол между плечами и осью X:", angleDeg, "°");
+        
+        // Возвращаем минимальный угол (всегда между 0° и 90°)
+        return angleDeg;
+    };
+
+    // Функция для расчета угла между плечами
+    const calculateShoulderAngle = (shoulderLeft, shoulderRight) => {
+        if (!shoulderLeft || !shoulderRight) {
+            return 0 
+        };
+        
+        // Угол между плечами относительно горизонтали
+        return calculateAngleBetweenPoints(shoulderLeft, shoulderRight);
+    };
+
+    const normalizeAngles = (angles, shoulderLeftCoord, shoulderRightСoord) => {
+        if (!angles || angles.length === 0) {
+            return angles;
+        }
+        
+        // Рассчитываем угол между плечами
+        const shoulderAngle = calculateShoulderAngle(shoulderLeftCoord, shoulderRightСoord);
+        // Находим начальное значение (первая точка)
+        const initialAngle = angles[0]?.shoulderAngle || 0;
+        
+        // Вычитаем начальное значение из всех точек
+        return angles.map(angleData => ({
+            ...angleData,
+            shoulderAngle: angleData.shoulderAngle - initialAngle - shoulderAngle
+        }));
+    };
+
+    // Находим минимальное и максимальное значения среди всех углов
+    const { minAngle } = useMemo(() => {
+        if (!repetitions || repetitions.length === 0) {
+            return { minAngle: 0 };
+        }
+
+        let globalMin = Infinity;
+
+        // Проходим по всем повторениям и находим глобальные min/max
+        repetitions.forEach(rep => {
+            if (rep.angles) {
+                const normalizedAngles = normalizeAngles(rep.angles, rep.shoulderLeftCoord, rep.shoulderRightCoord);
+                normalizedAngles.forEach(angleData => {
+                    globalMin = Math.min(globalMin, angleData.shoulderAngle);
+                });
+            }
+        });
+
+        // Добавляем небольшой отступ для лучшего отображения
+        const padding = (globalMin) * 0.1;
+        return {
+            minAngle: Math.min(0, globalMin - padding)
+        };
+    }, [repetitions]);
+
     const normalizedCurves = useMemo(() => {
         if (!repetitions || !Array.isArray(repetitions)) return [];
         
@@ -23,11 +110,14 @@ const GraphSingleHand = ({ repetitions, handLabel, lineColor }) => {
                     console.error("Invalid repetition data:", rep);
                     return null;
                 }
+                // Нормализуем углы перед созданием точек
+                const normalizedAngles = normalizeAngles(rep.angles, rep.shoulderLeftСoord[index], rep.shoulderRightСoord[index]);
+                
                 return {
                     index,
-                    points: rep.angles.map(pt => ({
+                    points: normalizedAngles.map(pt => ({
                         percent: (pt.time / rep.duration) * 100,
-                        angle: pt.shoulderAngle,
+                        angle: pt.shoulderAngle, // Используем уже нормализованное значение
                     }))
                 };
             })
@@ -296,8 +386,8 @@ const GraphSingleHand = ({ repetitions, handLabel, lineColor }) => {
                     text: "Угол (°)",
                     font: { size: 14 }
                 },
-                min: 0,
-                max: 180,
+                min: minAngle-10,
+                max: 200,
             },
         },
     };

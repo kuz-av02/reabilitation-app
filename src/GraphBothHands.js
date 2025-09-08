@@ -10,6 +10,49 @@ const GraphBothHands = ({ bothRepetitions }) => {
     const [hiddenLeftRepetitions, setHiddenLeftRepetitions] = useState([]);
     const [hiddenRightRepetitions, setHiddenRightRepetitions] = useState([]);
 
+    const normalizeAngles = (points) => {
+        if (!points || points.length === 0) return points;
+        
+        // Находим начальное значение (первая точка)
+        const initialAngle = points[0]?.shoulderAngle || 0;
+        
+        // Вычитаем начальное значение из всех точек
+        return points.map(point => ({
+            ...point,
+            angle: point.shoulderAngle - initialAngle
+        }));
+    };
+
+    const { minAngle } = useMemo(() => {
+        if (!bothRepetitions || bothRepetitions.length === 0) {
+            return { minAngle: 0 };
+        }
+
+        let globalMin = Infinity;
+
+        // Проходим по всем повторениям и находим глобальные min/max
+        bothRepetitions.forEach(rep => {
+            if (rep.anglesLeft) {
+                const normalizedLeftAngles = normalizeAngles(rep.anglesLeft);
+                normalizedLeftAngles.forEach(angleData => {
+                    globalMin = Math.min(globalMin, angleData.angle);
+                });
+            }
+            if (rep.anglesRight) {
+                const normalizedRightAngles = normalizeAngles(rep.anglesLeft);
+                normalizedRightAngles.forEach(angleData => {
+                    globalMin = Math.min(globalMin, angleData.angle);
+                });
+            }
+        });
+
+        // Добавляем небольшой отступ для лучшего отображения
+        const padding = (globalMin) * 0.1;
+        return {
+            minAngle: Math.min(0, globalMin - padding), 
+        };
+    }, [bothRepetitions]);
+
     const normalizeData = (repetitions, angleKey) => {
         if (!repetitions || !Array.isArray(repetitions)) return [];
 
@@ -20,11 +63,13 @@ const GraphBothHands = ({ bothRepetitions }) => {
                     console.error("Invalid repetition data:", rep);
                     return null;
                 }
+                const normalizedAngles = normalizeAngles(angles);
+                
                 return {
                     index,
-                    points: angles.map((pt) => ({
+                    points: normalizedAngles.map((pt) => ({
                         percent: (pt.time / rep.duration) * 100,
-                        angle: pt.shoulderAngle,
+                        angle: pt.angle,
                     })),
                 };
             })
@@ -349,8 +394,8 @@ const GraphBothHands = ({ bothRepetitions }) => {
                     text: "Угол (°)",
                     font: { size: 14 },
                 },
-                min: 0,
-                max: 180,
+                min: minAngle-10,
+                max: 200,
             },
         },
     };

@@ -413,6 +413,16 @@ function App() {
 
         return angle;
     }
+    function calcAngle360(p1, p2, p3) {
+        const radians = Math.atan2(p3.y - p2.y, p3.x - p2.x) - Math.atan2(p1.y - p2.y, p1.x - p2.x);
+        let angle = Math.abs(radians * (180.0 / Math.PI));
+
+        // if (angle > 180.0) {
+        //     angle = 360 - angle;
+        // }
+
+        return angle;
+    }
 
     const exercises = {
         arm_raise: {
@@ -1010,9 +1020,12 @@ function App() {
         let wristRight = landmark[16];
         let hipRight = landmark[24];
 
+        let lastElbow = elbowRight;
+        elbowRight.x = elbowRight.x - 2 * (elbowRight.x - shoulderRight.x);
         // Вычисляем углы
-        const shoulderAngleLeft = calcAngle(elbowLeft, shoulderLeft, hipLeft);
-        const shoulderAngleRight = calcAngle(elbowRight, shoulderRight, hipRight);
+        const shoulderAngleLeft = calcAngle360(elbowLeft, shoulderLeft, hipLeft);
+        const shoulderAngleRight = calcAngle360(elbowRight, shoulderRight, hipRight);
+        elbowRight = lastElbow;
         const elbowAngleLeft = calcAngle(wristLeft, elbowLeft, shoulderLeft);
         const elbowAngleRight = calcAngle(wristRight, elbowRight, shoulderRight);
 
@@ -1215,8 +1228,14 @@ function App() {
             hip = landmark[24];
         }
 
-        // Вычисляем углы
-        const shoulderAngle = calcAngle(elbow, shoulder, hip);
+        let lastElbow = elbow;
+        if (hand === "right") {
+            elbow.x = elbow.x - 2 * (elbow.x - shoulder.x);
+        }
+        const shoulderAngle = calcAngle360(elbow, shoulder, { x: shoulder.x, y: 10000 });
+        if (hand === "right") {
+            elbow = lastElbow;
+        }
         const elbowAngle = calcAngle(wrist, elbow, shoulder);
 
         // Обновляем максимальные и минимальные углы
@@ -1246,6 +1265,8 @@ function App() {
 
         // Сохраняем данные
         if (handData.currentRepetition) {
+            handData.currentRepetition.shoulderLeftСoord.push({ x: landmark[11].x, y: landmark[11].y, z: landmark[11].z })
+            handData.currentRepetition.shoulderRightСoord.push({ x: landmark[12].x, y: landmark[12].y, z: landmark[12].z })
             const relativeTime = timeInSeconds - handData.currentRepetition.startTime;
             handData.currentRepetition.angles.push({ time: relativeTime, elbowAngle: elbowAngle, shoulderAngle: shoulderAngle, maxShoulderAngle: handData.maxShoulderAngle });
             handData.currentRepetition.angularVelocities.push({ time: timeInSeconds, angularVelocity: Math.abs(shoulderAngularVelocity) });
@@ -1322,6 +1343,8 @@ function App() {
             handData.currentRepetition = {
                 startTime: timeInSeconds,
                 angles: [],
+                shoulderLeftСoord: [],
+                shoulderRightСoord: [],
                 angularVelocities: [],
                 linearVelocities: [],
                 accelerations: [],
