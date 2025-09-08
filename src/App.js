@@ -1172,6 +1172,77 @@ function App() {
                 averageAccelerationLeft: null,
                 averageAccelerationRight: null,
             };
+
+            const relativeTime = timeInSeconds - handData.currentRepetition.startTime;
+            handData.currentRepetition.anglesLeft.push({ time: relativeTime, shoulderAngle: shoulderAngleLeft, elbowAngleLeft: elbowAngleLeft, maxShoulderAngleLeft: handData.maxShoulderAngleLeft });
+            handData.currentRepetition.anglesRight.push({ time: relativeTime, shoulderAngle: shoulderAngleRight, elbowAngleRight: elbowAngleRight, maxShoulderAngleRight: handData.maxShoulderAngleRight });
+            handData.currentRepetition.angularVelocitiesLeft.push({ time: timeInSeconds, angularVelocity: Math.abs(shoulderAngularVelocityLeft) });
+            handData.currentRepetition.angularVelocitiesRight.push({ time: timeInSeconds, angularVelocity: Math.abs(shoulderAngularVelocityRight) });
+            handData.currentRepetition.linearVelocitiesLeft = handData.currentRepetition.linearVelocitiesLeft || [];
+            handData.currentRepetition.linearVelocitiesLeft.push({
+                time: timeInSeconds,
+                linearVelocity: linearVelocityLeft,
+            });
+            handData.currentRepetition.linearVelocitiesRight = handData.currentRepetition.linearVelocitiesRight || [];
+            handData.currentRepetition.linearVelocitiesRight.push({
+                time: timeInSeconds,
+                linearVelocity: linearVelocityRight,
+            });
+            handData.currentRepetition.accelerationsLeft = handData.currentRepetition.accelerationsLeft || [];
+            handData.currentRepetition.accelerationsLeft.push({
+                time: timeInSeconds,
+                acceleration: accelerationLeft,
+            });
+            handData.currentRepetition.accelerationsRight = handData.currentRepetition.accelerationsRight || [];
+            handData.currentRepetition.accelerationsRight.push({
+                time: timeInSeconds,
+                acceleration: accelerationRight,
+            });
+
+            if (lBaselineShoulderYRef.current !== null && rBaselineShoulderYRef.current !== null) {
+                // Считываем текущие координаты ключевых точек
+                const lShoulder = landmark[11];
+                const rShoulder = landmark[12];
+                const lEar = landmark[7];
+                const rEar = landmark[8];
+                const lMouth = landmark[9]; // Верхняя губа
+                const rMouth = landmark[10]; // Нижняя губа
+
+                // 2.2 Находим среднюю координату по оси X между точками рта
+                const mouthX = (lMouth.x + rMouth.x) / 2;
+
+                // 2.3 Рассчитываем модули разностей по оси X
+                const lShoulderMouthDif = Math.abs(lShoulder.x - mouthX);
+                const rShoulderMouthDif = Math.abs(rShoulder.x - mouthX);
+                const lEarMouthDif = Math.abs(lEar.x - mouthX);
+                const rEarMouthDif = Math.abs(rEar.x - mouthX);
+
+                // 2.4 Рассчитываем разницу между базовыми и текущими значениями по оси Y для плеч
+                const lBaselineDif = Math.abs(lBaselineShoulderYRef.current - lShoulder.y);
+                const rBaselineDif = Math.abs(rBaselineShoulderYRef.current - rShoulder.y);
+
+                // 2.5 Сравниваем разницы между левыми и правыми точками
+                const shouldersMouthDif = Math.abs(lShoulderMouthDif - rShoulderMouthDif);
+                const earsMouthDif = Math.abs(lEarMouthDif - rEarMouthDif);
+
+                // 2.6 Определяем тип ошибки
+                let error = null;
+                if ((lBaselineDif > 0.03 || rBaselineDif > 0.03) && shouldersMouthDif < 0.01) {
+                    error = "подъём плеча";
+                } else if (earsMouthDif > 0.03) {
+                    error = "наклон головы";
+                } else if (shouldersMouthDif > 0.045 && earsMouthDif > 0.02) {
+                    error = "наклон тела";
+                }
+
+                // Сохраняем ошибку, если она обнаружена
+                if (error) {
+                    handData.currentRepetition.errors.push({
+                        time: timeInSeconds,
+                        errorType: error,
+                    });
+                }
+            }
         } else if (movementPhaseRef.current === "подъём" && shoulderAngleLeft < angleThresholdDown && shoulderAngleRight < angleThresholdDown) {
             movementPhaseRef.current = "опускание";
             movementPhases.push(movementPhaseRef.current);
@@ -1192,6 +1263,14 @@ function App() {
                 const averageAccelerationRight = sumAccelerationRight / accelerationsRight.length || 0;
                 handData.currentRepetition.averageAccelerationRight = averageAccelerationRight;
 
+                handData.currentRepetition.anglesLeft.pop()
+                handData.currentRepetition.accelerationsLeft.pop()
+                handData.currentRepetition.angularVelocitiesLeft.pop()
+                handData.currentRepetition.linearVelocitiesLeft.pop()
+                handData.currentRepetition.anglesRight.pop()
+                handData.currentRepetition.accelerationsRight.pop()
+                handData.currentRepetition.angularVelocitiesRight.pop()
+                handData.currentRepetition.linearVelocitiesRight.pop()
                 handData.repetitions.push(handData.currentRepetition);
                 handData.currentRepetition = null;
 
@@ -1353,6 +1432,67 @@ function App() {
                 duration: null,
                 averageAcceleration: null,
             };
+
+            handData.currentRepetition.shoulderLeftСoord.push({ x: landmark[11].x, y: landmark[11].y, z: landmark[11].z })
+            handData.currentRepetition.shoulderRightСoord.push({ x: landmark[12].x, y: landmark[12].y, z: landmark[12].z })
+            const relativeTime = timeInSeconds - handData.currentRepetition.startTime;
+            handData.currentRepetition.angles.push({ time: relativeTime, elbowAngle: elbowAngle, shoulderAngle: shoulderAngle, maxShoulderAngle: handData.maxShoulderAngle });
+            handData.currentRepetition.angularVelocities.push({ time: timeInSeconds, angularVelocity: Math.abs(shoulderAngularVelocity) });
+            handData.currentRepetition.linearVelocities = handData.currentRepetition.linearVelocities || [];
+            handData.currentRepetition.linearVelocities.push({
+                time: timeInSeconds,
+                linearVelocity: linearVelocity,
+            });
+            handData.currentRepetition.accelerations = handData.currentRepetition.accelerations || [];
+            handData.currentRepetition.accelerations.push({
+                time: timeInSeconds,
+                acceleration: acceleration,
+            });
+            // Проверяем, что базовые координаты установлены
+            if (lBaselineShoulderYRef.current !== null && rBaselineShoulderYRef.current !== null) {
+                // Считываем текущие координаты ключевых точек
+                const lShoulder = landmark[11];
+                const rShoulder = landmark[12];
+                const lEar = landmark[7];
+                const rEar = landmark[8];
+                const lMouth = landmark[9]; // Верхняя губа
+                const rMouth = landmark[10]; // Нижняя губа
+
+                // 2.2 Находим среднюю координату по оси X между точками рта
+                const mouthX = (lMouth.x + rMouth.x) / 2;
+
+                // 2.3 Рассчитываем модули разностей по оси X
+                const lShoulderMouthDif = Math.abs(lShoulder.x - mouthX);
+                const rShoulderMouthDif = Math.abs(rShoulder.x - mouthX);
+                const lEarMouthDif = Math.abs(lEar.x - mouthX);
+                const rEarMouthDif = Math.abs(rEar.x - mouthX);
+
+                // 2.4 Рассчитываем разницу между базовыми и текущими значениями по оси Y для плеч
+                const lBaselineDif = Math.abs(lBaselineShoulderYRef.current - lShoulder.y);
+                const rBaselineDif = Math.abs(rBaselineShoulderYRef.current - rShoulder.y);
+
+                // 2.5 Сравниваем разницы между левыми и правыми точками
+                const shouldersMouthDif = Math.abs(lShoulderMouthDif - rShoulderMouthDif);
+                const earsMouthDif = Math.abs(lEarMouthDif - rEarMouthDif);
+
+                // 2.6 Определяем тип ошибки
+                let error = null;
+                if ((lBaselineDif > 0.03 || rBaselineDif > 0.03) && shouldersMouthDif < 0.01) {
+                    error = "подъём плеча";
+                } else if (earsMouthDif > 0.03) {
+                    error = "наклон головы";
+                } else if (shouldersMouthDif > 0.045 && earsMouthDif > 0.02) {
+                    error = "наклон тела";
+                }
+
+                // Сохраняем ошибку, если она обнаружена
+                if (error) {
+                    handData.currentRepetition.errors.push({
+                        time: timeInSeconds,
+                        errorType: error,
+                    });
+                }
+            }
         } else if (movementPhaseRef.current === "подъём" && shoulderAngle < angleThresholdDown) {
             movementPhaseRef.current = "опускание";
             movementPhases.push(movementPhaseRef.current);
@@ -1366,7 +1506,13 @@ function App() {
                 const sumAcceleration = accelerations.reduce((acc, val) => acc + val, 0);
                 const averageAcceleration = sumAcceleration / accelerations.length || 0;
                 handData.currentRepetition.averageAcceleration = averageAcceleration;
-
+                
+                handData.currentRepetition.angles.pop()
+                handData.currentRepetition.accelerations.pop()
+                handData.currentRepetition.angularVelocities.pop()
+                handData.currentRepetition.linearVelocities.pop()
+                handData.currentRepetition.shoulderLeftСoord.pop()
+                handData.currentRepetition.shoulderRightСoord.pop()
                 handData.repetitions.push(handData.currentRepetition);
                 handData.currentRepetition = null;
 

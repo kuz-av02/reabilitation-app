@@ -394,8 +394,8 @@ const GraphBothHands = ({ bothRepetitions }) => {
                     text: "Угол (°)",
                     font: { size: 14 },
                 },
-                min: minAngle-10,
-                max: 200,
+                min: minAngle-20,
+                max: 180,
             },
         },
     };

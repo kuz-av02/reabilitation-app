@@ -43,36 +43,43 @@ const GraphSingleHand = ({ repetitions, handLabel, lineColor }) => {
         const angleRad = Math.atan2(Math.abs(dy), Math.abs(dx));
         const angleDeg = angleRad * (180 / Math.PI);
         
-        console.log("Угол между плечами и осью X:", angleDeg, "°");
-        
         // Возвращаем минимальный угол (всегда между 0° и 90°)
         return angleDeg;
     };
 
-    // Функция для расчета угла между плечами
-    const calculateShoulderAngle = (shoulderLeft, shoulderRight) => {
-        if (!shoulderLeft || !shoulderRight) {
-            return 0 
-        };
+    // Функция для расчета углов между плечами для всех элементов массива
+    const calculateShoulderAngles = (shoulderLeftCoords, shoulderRightCoords) => {
+        if (!shoulderLeftCoords || !shoulderRightCoords || 
+            shoulderLeftCoords.length !== shoulderRightCoords.length) {
+            return [];
+        }
         
-        // Угол между плечами относительно горизонтали
-        return calculateAngleBetweenPoints(shoulderLeft, shoulderRight);
+        // Рассчитываем угол для каждой пары координат
+        return shoulderLeftCoords.map((shoulderLeft, index) => {
+            const shoulderRight = shoulderRightCoords[index];
+            if (!shoulderLeft || !shoulderRight) {
+                return 0;
+            }
+            return calculateAngleBetweenPoints(shoulderLeft, shoulderRight);
+        });
     };
 
-    const normalizeAngles = (angles, shoulderLeftCoord, shoulderRightСoord) => {
+    const normalizeAngles = (angles, shoulderLeftCoords, shoulderRightCoords) => {
         if (!angles || angles.length === 0) {
             return angles;
         }
         
-        // Рассчитываем угол между плечами
-        const shoulderAngle = calculateShoulderAngle(shoulderLeftCoord, shoulderRightСoord);
+        // Рассчитываем углы между плечами для всех элементов
+        const shoulderAngles = calculateShoulderAngles(shoulderLeftCoords, shoulderRightCoords);
+        
         // Находим начальное значение (первая точка)
         const initialAngle = angles[0]?.shoulderAngle || 0;
+        const initialShoulderAngle = shoulderAngles[0] || 0;
         
         // Вычитаем начальное значение из всех точек
-        return angles.map(angleData => ({
+        return angles.map((angleData, index) => ({
             ...angleData,
-            shoulderAngle: angleData.shoulderAngle - initialAngle - shoulderAngle
+            shoulderAngle: angleData.shoulderAngle - initialAngle - (shoulderAngles[index] || 0)
         }));
     };
 
@@ -111,7 +118,7 @@ const GraphSingleHand = ({ repetitions, handLabel, lineColor }) => {
                     return null;
                 }
                 // Нормализуем углы перед созданием точек
-                const normalizedAngles = normalizeAngles(rep.angles, rep.shoulderLeftСoord[index], rep.shoulderRightСoord[index]);
+                const normalizedAngles = normalizeAngles(rep.angles, rep.shoulderLeftСoord, rep.shoulderRightСoord);
                 
                 return {
                     index,
@@ -386,8 +393,8 @@ const GraphSingleHand = ({ repetitions, handLabel, lineColor }) => {
                     text: "Угол (°)",
                     font: { size: 14 }
                 },
-                min: minAngle-10,
-                max: 200,
+                min: minAngle-20,
+                max: 180,
             },
         },
     };
