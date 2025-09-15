@@ -77,10 +77,21 @@ const GraphSingleHand = ({ repetitions, handLabel, lineColor }) => {
         const initialShoulderAngle = shoulderAngles[0] || 0;
         
         // Вычитаем начальное значение из всех точек
-        return angles.map((angleData, index) => ({
-            ...angleData,
-            shoulderAngle: angleData.shoulderAngle - initialAngle - (shoulderAngles[index] || 0)
-        }));
+        // И вычитаем shoulderAngles[index] только если angle > 90 градусов
+        return angles.map((angleData, index) => {
+            const shoulderAngleValue = angleData.shoulderAngle;
+            const shoulderAngleCorrection = shoulderAngles[index] || 0;
+            
+            // Вычитаем shoulderAngleCorrection только если исходный угол > 90 градусов
+            const correctedAngle = shoulderAngleValue > 90 
+                ? shoulderAngleValue - initialAngle - shoulderAngleCorrection
+                : shoulderAngleValue - initialAngle;
+            
+            return { 
+                ...angleData,
+                shoulderAngle: correctedAngle
+            };
+        });
     };
 
     // Находим минимальное и максимальное значения среди всех углов

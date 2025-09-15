@@ -188,6 +188,10 @@ function App() {
         return () => {
             // Очистка таймера при размонтировании
             clearInterval(timerIdRef.current);
+            if (animationFrameId) {
+                window.cancelAnimationFrame(animationFrameId);
+                console.log(`EXIT1`);
+            }
 
             // Остановка камеры и очистка canvas
             if (webcamRunning) {
@@ -209,18 +213,20 @@ function App() {
 
     // Управление видеопотоком при изменении состояния webcamRunning
     useEffect(() => {
+        const video = videoRef.current;
+        
         if (webcamRunning) {
             if (!isModelLoaded) {
                 console.log("Wait! poseLandmarker not loaded yet.");
                 setWebcamRunning(false);
                 return;
             }
-            const video = videoRef.current;
             if (!video) {
                 console.log("Video element not available yet.");
                 setWebcamRunning(false);
                 return;
             }
+            
             // Включаем камеру
             const constraints = {
                 video: true,
@@ -228,6 +234,8 @@ function App() {
             navigator.mediaDevices
                 .getUserMedia(constraints)
                 .then((stream) => {
+                    // Удаляем предыдущие обработчики перед добавлением нового
+                    video.removeEventListener("loadeddata", predictWebcam);
                     video.srcObject = stream;
                     video.addEventListener("loadeddata", predictWebcam);
                 })
@@ -236,18 +244,23 @@ function App() {
                 });
         } else {
             // Останавливаем камеру
-            const video = videoRef.current;
             if (video && video.srcObject) {
                 video.removeEventListener("loadeddata", predictWebcam);
                 const stream = video.srcObject;
                 const tracks = stream.getTracks();
                 tracks.forEach((track) => {
                     track.stop();
-                    stream.removeTrack(track);
                 });
                 video.srcObject = null;
             }
         }
+        
+        // Очистка при размонтировании компонента
+        return () => {
+            if (video) {
+                video.removeEventListener("loadeddata", predictWebcam);
+            }
+        };
     }, [webcamRunning, isModelLoaded]);
 
     const resetScenario = () => {
@@ -315,33 +328,41 @@ function App() {
             console.log("Wait! poseLandmarker not loaded yet.");
             return;
         }
+        
         if (!webcamRunning) {
             if (!selectedHand) {
                 alert("Пожалуйста, выберите начальную руку прежде чем включить камеру.");
                 return;
             }
-            // Сохраняем начальную руку
+            
+            // Останавливаем предыдущую анимацию
+            if (animationFrameId) {
+                console.log(`EXIT2`);
+                window.cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            
             initialHandRef.current = selectedHand;
-
             currentHandPhaseRef.current = selectedHand;
             currentHandRef.current = selectedHand;
             setCurrentHand(selectedHand);
             resetScenario();
             setWebcamRunning(true);
-
-            // Запускаем обратный отсчёт
-            // startCountdown();
             waitStart();
         } else {
-            // Останавливаем упражнение
+            // Сначала останавливаем анимацию
+            if (animationFrameId) {
+                console.log(`EXIT3`);
+                window.cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            
+            // Затем обновляем состояние
             setIsCountingDown(false);
             isCountingDownRef.current = false;
             setCountdown(5);
             setWebcamRunning(false);
-
             clearCanvas();
-
-            // Сбрасываем выбор руки для следующего упражнения
             setSelectedHand("");
         }
     };
@@ -536,201 +557,73 @@ function App() {
     );
     let lastCallId = 0;
 
+    let animationFrameId = null;
+    let isPredicting = false;
+    const webcamRunningRef = useRef(false);
+    // Обновляйте ref при изменении состояния
+    useEffect(() => {
+        webcamRunningRef.current = webcamRunning;
+    }, [webcamRunning]);
     async function predictWebcam() {
-        if (!webcamRunning) {
+        if (!webcamRunning || isPredicting) {
+            // Отменяем следующий кадр, если камера выключена
+            if (animationFrameId) {
+                window.cancelAnimationFrame(animationFrameId);
+                console.log(` EXIT4`);
+                animationFrameId = null;
+            }
             return;
         }
+        isPredicting = true;
         const callId = ++lastCallId;
         // console.log(`[${callId}] predictWebcam started, exercise: ${selectedExercise}`);
 
-        const canvasElement = canvasRef.current;
-        const video = videoRef.current;
-        const canvasCtx = canvasCtxRef.current;
-        const drawingUtils = drawingUtilsRef.current;
+        try {
+            const canvasElement = canvasRef.current;
+            const video = videoRef.current;
+            const canvasCtx = canvasCtxRef.current;
+            const drawingUtils = drawingUtilsRef.current;
 
-        if (!canvasElement || !video || !canvasCtx || !drawingUtils) {
-            console.error("One or more required elements are not available.");
-            return;
-        }
+            if (!canvasElement || !video || !canvasCtx || !drawingUtils) {
+                console.error("One or more required elements are not available.");
+                return;
+            }
 
-        let startTimeMs = performance.now();
-        if (lastVideoTimeRef.current !== video.currentTime) {
-            lastVideoTimeRef.current = video.currentTime;
+            let startTimeMs = performance.now();
+            if (lastVideoTimeRef.current !== video.currentTime) {
+                lastVideoTimeRef.current = video.currentTime;
 
-            if (selectedExercise === "wrist_curl") {
-                const handLandmarker = handLandmarkerRef.current;
-                // Используем Hand Landmarker для упражнения с кистью
-                try {
-                    // console.log("=== Debug: Hand Landmarker Check ===");
-                    // console.log("Video currentTime:", video.currentTime);
-                    // console.log("Last video time:", lastVideoTimeRef.current);
-                    // console.log("Time condition:", lastVideoTimeRef.current !== video.currentTime);
-                    // console.log("Selected exercise:", selectedExercise);
-                    // console.log("Hand Landmarker initialized:", !!handLandmarkerRef.current);
-                    // console.log("Video stream state:", video.srcObject?.getTracks()?.[0]?.readyState);
+                if (selectedExercise === "wrist_curl") {
+                    const handLandmarker = handLandmarkerRef.current;
+                    // Используем Hand Landmarker для упражнения с кистью
+                    try {
+                        // console.log("=== Debug: Hand Landmarker Check ===");
+                        // console.log("Video currentTime:", video.currentTime);
+                        // console.log("Last video time:", lastVideoTimeRef.current);
+                        // console.log("Time condition:", lastVideoTimeRef.current !== video.currentTime);
+                        // console.log("Selected exercise:", selectedExercise);
+                        // console.log("Hand Landmarker initialized:", !!handLandmarkerRef.current);
+                        // console.log("Video stream state:", video.srcObject?.getTracks()?.[0]?.readyState);
 
-                    const result = handLandmarker.detectForVideo(video, startTimeMs);
-                    canvasCtx.save();
-                    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+                        const result = handLandmarker.detectForVideo(video, startTimeMs);
+                        canvasCtx.save();
+                        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-                    // Получаем данные текущего упражнения
-                    const exerciseData = exercises[selectedExercise];
-
-                    // Определяем целевую руку (левую или правую)
-                    const targetHand = currentHandPhaseRef.current; // "left" или "right"
-
-                    // Получаем целевые соединения и индексы для выбранной руки
-                    const targetConnections = exerciseData.targetConnections[targetHand];
-                    const targetIndices = exerciseData.targetIndices[targetHand];
-
-                    if (!targetConnections || !Array.isArray(targetConnections)) {
-                        console.error("targetConnections is undefined or not an array:", targetConnections);
-                        return;
-                    }
-
-                    // Создаем набор строковых представлений целевых соединений
-                    const targetConnectionStrings = new Set(
-                        targetConnections.map((conn) => {
-                            const sortedIndices = [conn.start, conn.end].sort((a, b) => a - b);
-                            return sortedIndices.join("-");
-                        })
-                    );
-
-                    // Фильтруем соединения
-                    const otherConnections = HandLandmarker.HAND_CONNECTIONS.filter((conn) => {
-                        const sortedIndices = [conn.start, conn.end].sort((a, b) => a - b);
-                        const connString = sortedIndices.join("-");
-                        return !targetConnectionStrings.has(connString);
-                    });
-
-                    for (const landmarks of result.landmarks) {
-                        // Определяем, какая рука обнаружена (левая или правая)
-                        const handedness = result.handednesses[0][0].displayName; // "Left" или "Right"
-
-                        // Если обнаруженная рука не соответствует целевой - пропускаем
-                        if (handedness.toLowerCase() !== targetHand) continue;
-
-                        // Отрисовываем остальные соединения белым цветом
-                        drawingUtils.drawConnectors(landmarks, otherConnections, {
-                            color: "#FFFFFF",
-                            lineWidth: 2,
-                        });
-
-                        // // Отрисовываем соединения целевой руки зелёным цветом
-                        // drawingUtils.drawConnectors(landmarks, targetConnections, {
-                        //     color: "#00FF00",
-                        //     lineWidth: 2,
-                        // });
-
-                        // Разделяем ключевые точки на целевые и остальные
-                        const targetLandmarks = landmarks.filter((_, index) => targetIndices.includes(index));
-                        const otherLandmarks = landmarks.filter((_, index) => !targetIndices.includes(index));
-
-                        // Отрисовываем остальные ключевые точки белым цветом без заливки
-                        drawingUtils.drawLandmarks(otherLandmarks, {
-                            color: "#FFFFFF",
-                            fillColor: "transparent",
-                            lineWidth: 2,
-                            radius: (data) => DrawingUtils.lerp(data.from?.z ?? 0.0, -0.15, 0.1, 5, 1),
-                        });
-
-                        // // Отрисовываем ключевые точки целевой руки зелёным цветом без заливки
-                        // drawingUtils.drawLandmarks(targetLandmarks, {
-                        //     color: "#00FF00",
-                        //     fillColor: "transparent",
-                        //     lineWidth: 2,
-                        //     radius: (data) => DrawingUtils.lerp(data.from?.z ?? 0.0, -0.15, 0.1, 5, 1),
-                        // });
-
-                        // Добавляем новую точку и соединение
-                        if (landmarks.length >= 18) {
-                            // Проверяем, что есть все нужные точки
-                            const point0 = landmarks[0]; // Точка запястья
-                            const point5 = landmarks[5]; // Точка большого пальца
-                            const point17 = landmarks[17]; // Точка мизинца
-
-                            // Находим середину между точками 5 и 17
-                            const midPoint = {
-                                x: (point5.x + point17.x) / 2,
-                                y: (point5.y + point17.y) / 2,
-                                z: (point5.z + point17.z) / 2,
-                            };
-
-                            // Создаем новую точку - пересечение линии из точки 0 с серединой линии 5-17
-                            const newPoint = {
-                                x: (point0.x + midPoint.x) / 2,
-                                y: (point0.y + midPoint.y) / 2,
-                                z: (point0.z + midPoint.z) / 2,
-                            };
-
-                            // Отрисовываем новую точку красным цветом
-                            drawingUtils.drawLandmarks([midPoint], {
-                                color: "#FF0000",
-                                fillColor: "#FF0000",
-                                lineWidth: 2,
-                                radius: 5, // Больший радиус для лучшей видимости
-                            });
-
-                            // Отрисовываем соединение между точкой 0 и новой точкой
-                            drawingUtils.drawConnectors([point0, midPoint], [{ start: 0, end: 1 }], {
-                                color: "#FF0000",
-                                lineWidth: 2,
-                            });
-
-                            drawingUtils.drawConnectors([landmarks[5], landmarks[17]], [{ start: 0, end: 1 }], {
-                                color: "#FF0000",
-                                lineWidth: 2,
-                            });
-
-                            if (targetHand === "left") {
-                                drawingUtils.drawConnectors([landmarks[0], { x: landmarks[0].x + 100, y: landmarks[0].y, z: landmarks[0].z }], [{ start: 0, end: 1 }], {
-                                    color: "#FF0000",
-                                    lineWidth: 2,
-                                });
-                            } else {
-                                drawingUtils.drawConnectors([landmarks[0], { x: 0, y: landmarks[0].y, z: landmarks[0].z }], [{ start: 0, end: 1 }], {
-                                    color: "#FF0000",
-                                    lineWidth: 2,
-                                });
-                            }
-                        }
-
-                        // Анализ движения кисти
-                        if (exerciseData.analyzeFunction) {
-                            exerciseData.analyzeFunction(landmarks);
-                        }
-                    }
-                    canvasCtx.restore();
-                } catch (error) {
-                    console.log("try err");
-                    console.error("Hand Landmarker error:", error);
-                }
-            } else {
-                const poseLandmarker = poseLandmarkerRef.current;
-                poseLandmarker.detectForVideo(video, startTimeMs, (result) => {
-                    canvasCtx.save();
-                    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-
-                    for (const landmark of result.landmarks) {
                         // Получаем данные текущего упражнения
                         const exerciseData = exercises[selectedExercise];
 
-                        let targetConnections, targetIndices;
+                        // Определяем целевую руку (левую или правую)
+                        const targetHand = currentHandPhaseRef.current; // "left" или "right"
 
-                        if (currentHandPhaseRef.current === "left" || currentHandPhaseRef.current === "right") {
-                            // Анализируем одну руку
-                            targetConnections = exerciseData.targetConnections[currentHandRef.current];
-                            targetIndices = exerciseData.targetIndices[currentHandRef.current];
-                        } else if (currentHandPhaseRef.current === "both") {
-                            // Анализируем обе руки
-                            targetConnections = [...exerciseData.targetConnections.left, ...exerciseData.targetConnections.right];
-                            targetIndices = [...exerciseData.targetIndices.left, ...exerciseData.targetIndices.right];
-                        }
+                        // Получаем целевые соединения и индексы для выбранной руки
+                        const targetConnections = exerciseData.targetConnections[targetHand];
+                        const targetIndices = exerciseData.targetIndices[targetHand];
 
                         if (!targetConnections || !Array.isArray(targetConnections)) {
                             console.error("targetConnections is undefined or not an array:", targetConnections);
-                            continue;
+                            return;
                         }
+
                         // Создаем набор строковых представлений целевых соединений
                         const targetConnectionStrings = new Set(
                             targetConnections.map((conn) => {
@@ -740,53 +633,207 @@ function App() {
                         );
 
                         // Фильтруем соединения
-                        const otherConnections = PoseLandmarker.POSE_CONNECTIONS.filter((conn) => {
+                        const otherConnections = HandLandmarker.HAND_CONNECTIONS.filter((conn) => {
                             const sortedIndices = [conn.start, conn.end].sort((a, b) => a - b);
                             const connString = sortedIndices.join("-");
                             return !targetConnectionStrings.has(connString);
                         });
 
-                        // Отрисовываем остальные соединения белым цветом
-                        drawingUtils.drawConnectors(landmark, otherConnections, { color: "#FFFFFF" });
+                        for (const landmarks of result.landmarks) {
+                            // Определяем, какая рука обнаружена (левая или правая)
+                            const handedness = result.handednesses[0][0].displayName; // "Left" или "Right"
 
-                        // Отрисовываем соединения целевой руки зелёным цветом
-                        drawingUtils.drawConnectors(landmark, targetConnections, { color: "#00FF00" });
+                            // Если обнаруженная рука не соответствует целевой - пропускаем
+                            if (handedness.toLowerCase() !== targetHand) continue;
 
-                        // Разделяем ключевые точки на целевые и остальные
-                        const targetLandmarks = landmark.filter((_, index) => targetIndices.includes(index));
-                        const otherLandmarks = landmark.filter((_, index) => !targetIndices.includes(index));
+                            // Отрисовываем остальные соединения белым цветом
+                            drawingUtils.drawConnectors(landmarks, otherConnections, {
+                                color: "#FFFFFF",
+                                lineWidth: 2,
+                            });
 
-                        // Отрисовываем остальные ключевые точки белым цветом без заливки
-                        drawingUtils.drawLandmarks(otherLandmarks, {
-                            color: "#FFFFFF",
-                            fillColor: "transparent",
-                            lineWidth: 2,
-                            radius: (data) => {
-                                return DrawingUtils.lerp(data.from?.z ?? 0.0, -0.15, 0.1, 5, 1);
-                            },
-                        });
+                            // // Отрисовываем соединения целевой руки зелёным цветом
+                            // drawingUtils.drawConnectors(landmarks, targetConnections, {
+                            //     color: "#00FF00",
+                            //     lineWidth: 2,
+                            // });
 
-                        // Отрисовываем ключевые точки целевой руки зелёным цветом без заливки
-                        drawingUtils.drawLandmarks(targetLandmarks, {
-                            color: "#00FF00",
-                            fillColor: "transparent",
-                            lineWidth: 2,
-                            radius: (data) => {
-                                return DrawingUtils.lerp(data.from?.z ?? 0.0, -0.15, 0.1, 5, 1);
-                            },
-                        });
+                            // Разделяем ключевые точки на целевые и остальные
+                            const targetLandmarks = landmarks.filter((_, index) => targetIndices.includes(index));
+                            const otherLandmarks = landmarks.filter((_, index) => !targetIndices.includes(index));
 
-                        // Вызываем функцию анализа движения для текущего упражнения
-                        if (exerciseData.analyzeFunction) {
-                            exerciseData.analyzeFunction(landmark);
+                            // Отрисовываем остальные ключевые точки белым цветом без заливки
+                            drawingUtils.drawLandmarks(otherLandmarks, {
+                                color: "#FFFFFF",
+                                fillColor: "transparent",
+                                lineWidth: 2,
+                                radius: (data) => DrawingUtils.lerp(data.from?.z ?? 0.0, -0.15, 0.1, 5, 1),
+                            });
+
+                            // // Отрисовываем ключевые точки целевой руки зелёным цветом без заливки
+                            // drawingUtils.drawLandmarks(targetLandmarks, {
+                            //     color: "#00FF00",
+                            //     fillColor: "transparent",
+                            //     lineWidth: 2,
+                            //     radius: (data) => DrawingUtils.lerp(data.from?.z ?? 0.0, -0.15, 0.1, 5, 1),
+                            // });
+
+                            // Добавляем новую точку и соединение
+                            if (landmarks.length >= 18) {
+                                // Проверяем, что есть все нужные точки
+                                const point0 = landmarks[0]; // Точка запястья
+                                const point5 = landmarks[5]; // Точка большого пальца
+                                const point17 = landmarks[17]; // Точка мизинца
+
+                                // Находим середину между точками 5 и 17
+                                const midPoint = {
+                                    x: (point5.x + point17.x) / 2,
+                                    y: (point5.y + point17.y) / 2,
+                                    z: (point5.z + point17.z) / 2,
+                                };
+
+                                // Создаем новую точку - пересечение линии из точки 0 с серединой линии 5-17
+                                const newPoint = {
+                                    x: (point0.x + midPoint.x) / 2,
+                                    y: (point0.y + midPoint.y) / 2,
+                                    z: (point0.z + midPoint.z) / 2,
+                                };
+
+                                // Отрисовываем новую точку красным цветом
+                                drawingUtils.drawLandmarks([midPoint], {
+                                    color: "#FF0000",
+                                    fillColor: "#FF0000",
+                                    lineWidth: 2,
+                                    radius: 5, // Больший радиус для лучшей видимости
+                                });
+
+                                // Отрисовываем соединение между точкой 0 и новой точкой
+                                drawingUtils.drawConnectors([point0, midPoint], [{ start: 0, end: 1 }], {
+                                    color: "#FF0000",
+                                    lineWidth: 2,
+                                });
+
+                                drawingUtils.drawConnectors([landmarks[5], landmarks[17]], [{ start: 0, end: 1 }], {
+                                    color: "#FF0000",
+                                    lineWidth: 2,
+                                });
+
+                                if (targetHand === "left") {
+                                    drawingUtils.drawConnectors([landmarks[0], { x: landmarks[0].x + 100, y: landmarks[0].y, z: landmarks[0].z }], [{ start: 0, end: 1 }], {
+                                        color: "#FF0000",
+                                        lineWidth: 2,
+                                    });
+                                } else {
+                                    drawingUtils.drawConnectors([landmarks[0], { x: 0, y: landmarks[0].y, z: landmarks[0].z }], [{ start: 0, end: 1 }], {
+                                        color: "#FF0000",
+                                        lineWidth: 2,
+                                    });
+                                }
+                            }
+
+                            // Анализ движения кисти
+                            if (exerciseData.analyzeFunction) {
+                                exerciseData.analyzeFunction(landmarks);
+                            }
                         }
+                        canvasCtx.restore();
+                    } catch (error) {
+                        console.log("try err");
+                        console.error("Hand Landmarker error:", error);
                     }
-                    canvasCtx.restore();
-                });
+                } else {
+                    const poseLandmarker = poseLandmarkerRef.current;
+                    poseLandmarker.detectForVideo(video, startTimeMs, (result) => {
+                        canvasCtx.save();
+                        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+                        for (const landmark of result.landmarks) {
+                            // Получаем данные текущего упражнения
+                            const exerciseData = exercises[selectedExercise];
+
+                            let targetConnections, targetIndices;
+
+                            if (currentHandPhaseRef.current === "left" || currentHandPhaseRef.current === "right") {
+                                // Анализируем одну руку
+                                targetConnections = exerciseData.targetConnections[currentHandRef.current];
+                                targetIndices = exerciseData.targetIndices[currentHandRef.current];
+                            } else if (currentHandPhaseRef.current === "both") {
+                                // Анализируем обе руки
+                                targetConnections = [...exerciseData.targetConnections.left, ...exerciseData.targetConnections.right];
+                                targetIndices = [...exerciseData.targetIndices.left, ...exerciseData.targetIndices.right];
+                            }
+
+                            if (!targetConnections || !Array.isArray(targetConnections)) {
+                                console.error("targetConnections is undefined or not an array:", targetConnections);
+                                continue;
+                            }
+                            // Создаем набор строковых представлений целевых соединений
+                            const targetConnectionStrings = new Set(
+                                targetConnections.map((conn) => {
+                                    const sortedIndices = [conn.start, conn.end].sort((a, b) => a - b);
+                                    return sortedIndices.join("-");
+                                })
+                            );
+
+                            // Фильтруем соединения
+                            const otherConnections = PoseLandmarker.POSE_CONNECTIONS.filter((conn) => {
+                                const sortedIndices = [conn.start, conn.end].sort((a, b) => a - b);
+                                const connString = sortedIndices.join("-");
+                                return !targetConnectionStrings.has(connString);
+                            });
+
+                            // Отрисовываем остальные соединения белым цветом
+                            drawingUtils.drawConnectors(landmark, otherConnections, { color: "#FFFFFF" });
+
+                            // Отрисовываем соединения целевой руки зелёным цветом
+                            drawingUtils.drawConnectors(landmark, targetConnections, { color: "#00FF00" });
+
+                            // Разделяем ключевые точки на целевые и остальные
+                            const targetLandmarks = landmark.filter((_, index) => targetIndices.includes(index));
+                            const otherLandmarks = landmark.filter((_, index) => !targetIndices.includes(index));
+
+                            // Отрисовываем остальные ключевые точки белым цветом без заливки
+                            drawingUtils.drawLandmarks(otherLandmarks, {
+                                color: "#FFFFFF",
+                                fillColor: "transparent",
+                                lineWidth: 2,
+                                radius: (data) => {
+                                    return DrawingUtils.lerp(data.from?.z ?? 0.0, -0.15, 0.1, 5, 1);
+                                },
+                            });
+
+                            // Отрисовываем ключевые точки целевой руки зелёным цветом без заливки
+                            drawingUtils.drawLandmarks(targetLandmarks, {
+                                color: "#00FF00",
+                                fillColor: "transparent",
+                                lineWidth: 2,
+                                radius: (data) => {
+                                    return DrawingUtils.lerp(data.from?.z ?? 0.0, -0.15, 0.1, 5, 1);
+                                },
+                            });
+
+                            // Вызываем функцию анализа движения для текущего упражнения
+                            if (exerciseData.analyzeFunction) {
+                                exerciseData.analyzeFunction(landmark);
+                            }
+                        }
+                        canvasCtx.restore();
+                    });
+                }
             }
         }
-        if (webcamRunning === true) {
-            window.requestAnimationFrame(predictWebcam);
+        catch (error) {
+            console.error("Error in predictWebcam:", error);
+        } finally {
+            isPredicting = false;
+        }
+        // Запрашиваем следующий кадр только если камера всё ещё включена
+        if (webcamRunningRef.current) {
+            animationFrameId = window.requestAnimationFrame(predictWebcam);
+        } else if (animationFrameId) {
+            window.cancelAnimationFrame(animationFrameId);
+            console.log(` EXIT5`);
+            animationFrameId = null;
         }
     }
 
@@ -1263,14 +1310,53 @@ function App() {
                 const averageAccelerationRight = sumAccelerationRight / accelerationsRight.length || 0;
                 handData.currentRepetition.averageAccelerationRight = averageAccelerationRight;
 
-                handData.currentRepetition.anglesLeft.pop()
-                handData.currentRepetition.accelerationsLeft.pop()
-                handData.currentRepetition.angularVelocitiesLeft.pop()
-                handData.currentRepetition.linearVelocitiesLeft.pop()
-                handData.currentRepetition.anglesRight.pop()
-                handData.currentRepetition.accelerationsRight.pop()
-                handData.currentRepetition.angularVelocitiesRight.pop()
-                handData.currentRepetition.linearVelocitiesRight.pop()
+
+                let i = handData.currentRepetition.anglesLeft.length - 1;
+                while (i >= 0) {
+                    if (handData.currentRepetition.anglesLeft[i].shoulderAngle < angleThresholdDown) {
+                        handData.currentRepetition.anglesLeft.pop();
+                        if (handData.currentRepetition.accelerationsLeft.length > i) {
+                            handData.currentRepetition.accelerationsLeft.pop();
+                        }
+                        if (handData.currentRepetition.angularVelocitiesLeft.length > i) {
+                            handData.currentRepetition.angularVelocitiesLeft.pop();
+                        }
+                        if (handData.currentRepetition.linearVelocitiesLeft.length > i) {
+                            handData.currentRepetition.linearVelocitiesLeft.pop();
+                        }
+                        i--;
+                    } else {
+                        break; // Прерываем цикл, когда находим элемент с углом >= порогу
+                    }
+                }
+
+                // Удаляем элементы для правой руки
+                let j = handData.currentRepetition.anglesRight.length - 1;
+                while (j >= 0) {
+                    if (handData.currentRepetition.anglesRight[j].shoulderAngle < angleThresholdDown) {
+                        handData.currentRepetition.anglesRight.pop();
+                        if (handData.currentRepetition.accelerationsRight.length > j) {
+                            handData.currentRepetition.accelerationsRight.pop();
+                        }
+                        if (handData.currentRepetition.angularVelocitiesRight.length > j) {
+                            handData.currentRepetition.angularVelocitiesRight.pop();
+                        }
+                        if (handData.currentRepetition.linearVelocitiesRight.length > j) {
+                            handData.currentRepetition.linearVelocitiesRight.pop();
+                        }
+                        j--;
+                    } else {
+                        break; // Прерываем цикл, когда находим элемент с углом >= порогу
+                    }
+                }
+                // handData.currentRepetition.anglesLeft.pop()
+                // handData.currentRepetition.accelerationsLeft.pop()
+                // handData.currentRepetition.angularVelocitiesLeft.pop()
+                // handData.currentRepetition.linearVelocitiesLeft.pop()
+                // handData.currentRepetition.anglesRight.pop()
+                // handData.currentRepetition.accelerationsRight.pop()
+                // handData.currentRepetition.angularVelocitiesRight.pop()
+                // handData.currentRepetition.linearVelocitiesRight.pop()
                 handData.repetitions.push(handData.currentRepetition);
                 handData.currentRepetition = null;
 
