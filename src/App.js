@@ -6,7 +6,7 @@ import GraphBothHands from "./GraphBothHands";
 import MovementPhaseChart from "./MovementPhaseChart";
 import GraphSingleWrist from "./GraphSingleWrist";
 import MovementPhaseWrist from "./MovementPhaseWrist";
-// import { exportChartsToPDF } from "./exportToPDF";
+import { exportChartsToPDF } from "./exportToPDF";
 
 function App() {
     const [desiredReps, setDesiredReps] = useState(5);
@@ -49,6 +49,11 @@ function App() {
     const poseLandmarkerRef = useRef(null);
     const canvasCtxRef = useRef(null);
     const drawingUtilsRef = useRef(null);
+    const chartsContainerRef = useRef(null);
+
+    const handleExportPDF = () => {
+        exportChartsToPDF('.charts-container', `exercise_report_${selectedExercise}`);
+    };
 
     // Функция для получения противоположной руки
     const oppositeHand = (hand) => (hand === "left" ? "right" : "left");
@@ -2235,13 +2240,13 @@ function App() {
                 </div>
             </div>
             {showCharts && (
-                <div>
-                    {/* <button
-                        onClick={() => exportChartsToPDF(".graph-container", "arm_raise_report")}
+                <div ref={chartsContainerRef} className="charts-container">
+                    <button
+                        onClick={handleExportPDF}
                         style={{
                             padding: "12px 24px",
                             fontSize: "18px",
-                            margin: "20px 0",
+                            margin: "5px 0",
                             backgroundColor: "#2196F3",
                             color: "white",
                             border: "none",
@@ -2249,15 +2254,20 @@ function App() {
                             cursor: "pointer",
                             boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
                             transition: "all 0.3s ease",
-                            ":hover": {
-                                backgroundColor: "#1976D2",
-                                transform: "translateY(-2px)",
-                            },
                         }}
-                    >📥 Сохранить отчёт в PDF
+                        onMouseOver={(e) => {
+                            e.target.style.backgroundColor = "#1976D2";
+                            e.target.style.transform = "translateY(-2px)";
+                        }}
+                        onMouseOut={(e) => {
+                            e.target.style.backgroundColor = "#2196F3";
+                            e.target.style.transform = "translateY(0)";
+                        }}
+                    >
+                        📥 Сохранить отчёт в PDF
                     </button>
 
-                    {/* Графики */}
+                    {/* Графики и таблицы */}
                     {displayedExercise === "arm_raise" && <ArmRaiseCharts />}
                     {displayedExercise === "wrist_curl" && <WristCurlCharts />}
                     {/* Таблица для левой руки */}

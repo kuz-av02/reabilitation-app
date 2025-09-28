@@ -76,16 +76,61 @@ const GraphSingleHand = ({ repetitions, handLabel, lineColor }) => {
         const initialAngle = angles[0]?.shoulderAngle || 0;
         const initialShoulderAngle = shoulderAngles[0] || 0;
         
-        // Вычитаем начальное значение из всех точек
-        // И вычитаем shoulderAngles[index] только если angle > 90 градусов
+        // Находим опорные точки около 90 градусов
+        let rise90Index = -1;  // точка на подъеме
+        let fall90Index = -1;  // точка на опускании
+        let maxAngleIndex = 0; // индекс максимального угла
+        let maxAngle = angles[0].shoulderAngle;
+
+        for (let i = 1; i < angles.length; i++) {
+            if (angles[i].shoulderAngle > maxAngle) {
+                maxAngle = angles[i].shoulderAngle;
+                maxAngleIndex = i;
+            }
+        }
+
+        // Ищем точку на подъеме (первое пересечение 90 градусов снизу вверх)
+        for (let i = 1; i < angles.length; i++) {
+            if (angles[i].shoulderAngle >= 90 && angles[i-1].shoulderAngle < 90) {
+                rise90Index = i;
+                break;
+            }
+        }
+
+        // Ищем точку на опускании (первое пересечение 90 градусов сверху вниз после максимального угла)
+        for (let i = maxAngleIndex + 1; i < angles.length; i++) {
+            if (angles[i].shoulderAngle <= 90 && angles[i-1].shoulderAngle > 90) {
+                fall90Index = i;
+                break;
+            }
+        }
+
+        // Получаем значения углов в опорных точках
+        const rise90Angle = rise90Index !== -1 ? angles[rise90Index].shoulderAngle : 90;
+        const fall90Angle = fall90Index !== -1 ? angles[fall90Index].shoulderAngle : 90;
+
         return angles.map((angleData, index) => {
             const shoulderAngleValue = angleData.shoulderAngle;
             const shoulderAngleCorrection = shoulderAngles[index] || 0;
             
-            // Вычитаем shoulderAngleCorrection только если исходный угол > 90 градусов
-            const correctedAngle = shoulderAngleValue > 90 
-                ? shoulderAngleValue - initialAngle - shoulderAngleCorrection
-                : shoulderAngleValue - initialAngle;
+            let correctedAngle = shoulderAngleValue - initialAngle;
+            
+            // Применяем коррекцию только если угол больше 90
+            if (shoulderAngleValue > 90) {
+                if (index <= maxAngleIndex) {
+                    // Фаза подъема до максимального угла
+                    // Вычитаем, но не меньше rise90Angle
+                    const minAllowedAngle = rise90Angle - initialAngle;
+                    const corrected = shoulderAngleValue - initialAngle - shoulderAngleCorrection;
+                    correctedAngle = Math.max(corrected, minAllowedAngle);
+                } else {
+                    // Фаза опускания после максимального угла
+                    // Вычитаем, но не меньше fall90Angle
+                    const minAllowedAngle = fall90Angle - initialAngle;
+                    const corrected = shoulderAngleValue - initialAngle - shoulderAngleCorrection;
+                    correctedAngle = Math.max(corrected, minAllowedAngle);
+                }
+            }
             
             return { 
                 ...angleData,
