@@ -1,65 +1,93 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
-
-
-export const exportChartsToPDF = async (selector, filename = 'report') => {
+async function registerCyrillicFont(pdf, url = '/fonts/DejaVuSans.ttf', fontName = 'DejaVuSans') {
     try {
-        // Находим элемент с графиками
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Font fetch failed');
+        const arrayBuffer = await res.arrayBuffer();
+        // конвертируем в base64
+        let binary = '';
+        const bytes = new Uint8Array(arrayBuffer);
+        const len = bytes.byteLength;
+        const chunk = 0x8000;
+        for (let i = 0; i < len; i += chunk) {
+            const sub = bytes.subarray(i, Math.min(i + chunk, len));
+            binary += String.fromCharCode.apply(null, sub);
+        }
+        const base64 = btoa(binary);
+        // регистрируем
+        if (pdf && pdf.addFileToVFS && pdf.addFont) {
+            pdf.addFileToVFS(`${fontName}.ttf`, base64);
+            pdf.addFont(`${fontName}.ttf`, fontName, 'normal');
+            pdf.setFont(fontName);
+        }
+    } catch (err) {
+        console.warn('Не удалось загрузить шрифт для кириллицы:', err);
+        // в случае ошибки оставляем стандартный шрифт
+    }
+}
+
+
+export const exportChartsToPDF = async (selector, filename = 'report', patientName = '') => {
+    try {
         const element = document.querySelector(selector);
         if (!element) {
             console.error('Element not found');
             return;
         }
 
-        // Создаем PDF документ
         const pdf = new jsPDF('p', 'mm', 'a4');
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
-        
-        // Добавляем заголовок
+
+        // Регистрация кириллического шрифта (если файл доступен в public/fonts/)
+        await registerCyrillicFont(pdf, '/fonts/DejaVuSans.ttf', 'DejaVuSans');
+
+        // Заголовок: имя пациента (если есть), название отчёта и дата
+        let y = 15;
+        if (patientName && patientName.trim() !== '') {
+            pdf.setFontSize(14);
+            pdf.text(`Пациент: ${patientName}`, 10, y);
+            y += 8;
+        }
         pdf.setFontSize(20);
-        pdf.text('Exercise report', pageWidth / 2, 15, { align: 'center' });
+        pdf.text('Exercise report', pageWidth / 2, y, { align: 'center' });
+        y += 7;
         pdf.setFontSize(12);
-        pdf.text(new Date().toLocaleDateString('ru-RU'), pageWidth / 2, 22, { align: 'center' });
+        pdf.text(new Date().toLocaleDateString('ru-RU'), pageWidth / 2, y, { align: 'center' });
 
-        let currentY = 30;
+        let currentY = y + 8;
 
-        // Разделяем элемент на части для лучшего качества
         const children = element.children;
-        
+
         for (let i = 0; i < children.length; i++) {
             const child = children[i];
-            
-            // Пропускаем кнопки и другие ненужные элементы
+
             if (child.tagName === 'BUTTON' || child.style.display === 'none') {
                 continue;
             }
 
-            // Создаем canvas из элемента
             const canvas = await html2canvas(child, {
-                scale: 2, // Увеличиваем качество
+                scale: 2,
                 useCORS: true,
                 logging: false,
                 backgroundColor: '#ffffff'
             });
 
             const imgData = canvas.toDataURL('image/png');
-            const imgWidth = pageWidth - 20; // Отступы по бокам
+            const imgWidth = pageWidth - 20;
             const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-            // Если элемент не помещается на текущей странице, добавляем новую
             if (currentY + imgHeight > pageHeight - 20) {
                 pdf.addPage();
                 currentY = 20;
             }
 
-            // Добавляем изображение в PDF
             pdf.addImage(imgData, 'PNG', 10, currentY, imgWidth, imgHeight);
             currentY += imgHeight + 10;
         }
 
-        // Сохраняем PDF
         pdf.save(`${filename}_${new Date().toISOString().split('T')[0]}.pdf`);
 
     } catch (error) {

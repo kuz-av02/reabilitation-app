@@ -10,6 +10,7 @@ import { exportChartsToPDF } from "./exportToPDF";
 
 function App() {
     const [desiredReps, setDesiredReps] = useState(5);
+    const [patientName, setPatientName] = useState('');
     const desiredRepsRef = useRef(5);
     const [selectedExercise, setSelectedExercise] = useState("arm_raise");
     const [webcamRunning, setWebcamRunning] = useState(false);
@@ -52,7 +53,7 @@ function App() {
     const chartsContainerRef = useRef(null);
 
     const handleExportPDF = () => {
-        exportChartsToPDF('.charts-container', `exercise_report_${selectedExercise}`);
+        exportChartsToPDF('.charts-container', `exercise_report_${selectedExercise}`, patientName);
     };
 
     // Функция для получения противоположной руки
@@ -329,6 +330,10 @@ function App() {
     };
 
     const enableCam = () => {
+        if (!patientName || patientName.trim() === "") {
+            alert("Пожалуйста, введите имя пациента перед запуском.");
+            return;
+        }
         if (!isModelLoaded) {
             console.log("Wait! poseLandmarker not loaded yet.");
             return;
@@ -2212,6 +2217,20 @@ function App() {
                         }}
                     />
                 </div>
+                <div style={{ marginBottom: "1rem" }}>
+                    <label htmlFor="patientName" style={{ fontSize: "20px" }}>
+                        Имя пациента:
+                    </label>
+                    <input
+                        type="text"
+                        id="patientName"
+                        value={patientName}
+                        placeholder="ФИО пациента"
+                        style={{ fontSize: "20px", marginLeft: "0.5rem", width: "240px" }}
+                        onChange={(e) => setPatientName(e.target.value)}
+                        disabled={webcamRunning}
+                    />
+                </div>
                 <div id="fpsCounter" style={{ fontSize: "26px" }}>
                     FPS:{" "}
                 </div>
@@ -2272,13 +2291,13 @@ function App() {
                     {displayedExercise === "wrist_curl" && <WristCurlCharts />}
                     {/* Таблица для левой руки */}
                     <div style={{ overflowX: "auto", marginBottom: "30px" }}>
-                        <h3>Левая рука</h3>
+                        <h2>Левая рука</h2>
                         <table
                             style={{
                                 borderCollapse: "collapse",
                                 width: "100%",
                                 maxWidth: "1000px",
-                                fontSize: "14px",
+                                fontSize: "24px",
                                 margin: "0 auto",
                             }}
                         >
@@ -2302,13 +2321,13 @@ function App() {
                     </div>
                     {/* Таблица для правой руки */}
                     <div style={{ overflowX: "auto", marginBottom: "30px" }}>
-                        <h3>Правая рука</h3>
+                        <h2>Правая рука</h2>
                         <table
                             style={{
                                 borderCollapse: "collapse",
                                 width: "100%",
                                 maxWidth: "1000px",
-                                fontSize: "14px",
+                                fontSize: "24px",
                                 margin: "0 auto",
                             }}
                         >
@@ -2334,13 +2353,13 @@ function App() {
                     {/* Таблица для обеих рук */}
                     {bothHandsStats.length > 0 && (
                         <div style={{ overflowX: "auto", marginBottom: "30px" }}>
-                            <h3>Обе руки</h3>
+                            <h2>Обе руки</h2>
                             <table
                                 style={{
                                     borderCollapse: "collapse",
                                     width: "100%",
                                     maxWidth: "1000px",
-                                    fontSize: "14px",
+                                    fontSize: "24px",
                                     margin: "0 auto",
                                 }}
                             >

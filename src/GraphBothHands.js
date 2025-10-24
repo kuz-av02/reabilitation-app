@@ -310,6 +310,10 @@ const GraphBothHands = ({ bothRepetitions }) => {
         plugins: {
             legend: {
                 display: true,
+                labels: {
+                    font: { size: 26 },
+                    color: '#111',
+                },
                 onClick: (e, legendItem, legend) => {
                     const index = legendItem.datasetIndex;
                     const meta = legend.chart.getDatasetMeta(index);
@@ -345,7 +349,8 @@ const GraphBothHands = ({ bothRepetitions }) => {
             title: {
                 display: true,
                 text: "Сравнительный график",
-                font: { size: 16 },
+                font: { size: 30 },
+                color: '#111',
             },
             annotation: {
                 annotations: {
@@ -385,15 +390,27 @@ const GraphBothHands = ({ bothRepetitions }) => {
                 title: {
                     display: true,
                     text: "Время цикла (%)",
-                    font: { size: 14 },
-                },
+                    font: { size: 30 },
+                    color: '#111',
+                },                
+                ticks: {
+                    font: { size: 16 },
+                    color: '#222',
+                    autoSkip: false,
+                    maxTicksLimit: 101,
+                } 
             },
             y: {
                 title: {
                     display: true,
                     text: "Угол (°)",
-                    font: { size: 14 },
-                },
+                    font: { size: 30 },
+                    color: '#111',
+                },                
+                ticks: {
+                    font: { size: 20 },
+                    color: '#222'
+                }, 
                 min: minAngle-20,
                 max: 180,
             },
@@ -414,6 +431,7 @@ const GraphBothHands = ({ bothRepetitions }) => {
                     border: "none",
                     borderRadius: "4px",
                     cursor: "pointer",
+                    fontSize: "24px",
                     zIndex: 10,
                 }}
             >

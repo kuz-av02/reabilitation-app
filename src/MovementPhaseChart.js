@@ -207,10 +207,16 @@ const MovementPhaseChart = ({ phasesDataLeft, phasesDataRight, handLabel }) => {
         plugins: {
             legend: {
                 position: 'top',
+                labels: {
+                    font: { size: 20 }, // размер и жирность легенды
+                    color: '#111'
+                }
             },
             title: {
                 display: true,
                 text: `Фазы движения для ${handLabel}`,
+                font: { size: 30, weight: '700' },
+                color: '#111'
             },
         },
         scales: {
@@ -219,6 +225,12 @@ const MovementPhaseChart = ({ phasesDataLeft, phasesDataRight, handLabel }) => {
                 title: {
                     display: true,
                     text: 'Длительность (%)',
+                    font: { size: 30 },
+                    color: '#111'
+                },
+                ticks: {
+                    font: { size: 20 }, 
+                    color: '#222'
                 },
                 max: 100, // Максимальное значение 100%
             },
@@ -227,6 +239,12 @@ const MovementPhaseChart = ({ phasesDataLeft, phasesDataRight, handLabel }) => {
                 title: {
                     display: true,
                     text: 'Тип повторения',
+                    font: { size: 30 },
+                    color: '#111'
+                },
+                ticks: {
+                    font: { size: 20 }, 
+                    color: '#222'
                 },
             },
         },
