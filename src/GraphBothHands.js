@@ -397,6 +397,10 @@ const GraphBothHands = ({ bothRepetitions }) => {
                     font: { size: 16 },
                     color: '#222',
                     autoSkip: false,
+                    callback: function(value, index) {
+                        const step = 2;
+                        return (index % step === 0) ? value : '';
+                    },
                     maxTicksLimit: 101,
                 } 
             },
